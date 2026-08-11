@@ -138,6 +138,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .io-btn.exp{color:var(--green);border-color:rgba(74,222,128,.3)}
 .io-btn.imp{color:var(--accent);border-color:rgba(232,200,74,.3)}
 #import-file{display:none}
+/* panier vente groupée */
+.cart-line{background:var(--bg3);border:.5px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.cart-line-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.cart-line-title{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cart-rm{width:26px;height:26px;flex-shrink:0;border-radius:8px;border:.5px solid rgba(248,113,113,.25);background:transparent;color:var(--red);font-size:15px;line-height:1;cursor:pointer;font-family:inherit}
+.cart-line .row2{gap:8px}
+.cart-line .field{margin-bottom:0}
+.cart-line select,.cart-line input{padding:10px 12px;font-size:14px}
+.cart-add{width:100%;padding:12px;border-radius:10px;border:.5px dashed var(--border2);background:transparent;color:var(--muted);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;margin-bottom:12px}
+.cart-add:active{background:var(--bg3)}
+.cart-total{display:flex;justify-content:space-between;align-items:baseline;padding:11px 13px;background:var(--green-dim);border:.5px solid rgba(74,222,128,.25);border-radius:10px;margin-bottom:12px}
+.cart-total .lbl{font-size:12px;color:var(--green);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.cart-total .val{font-size:17px;font-weight:600;font-family:'DM Mono',monospace;color:var(--green)}
+.tx-group-tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--purple-dim);color:var(--purple)}
 /* lock screen */
 #lock-screen{position:fixed;inset:0;background:var(--bg);z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .lock-icon{font-size:40px;margin-bottom:14px}
@@ -188,14 +202,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
           <button class="vtbtn" id="tbtn" onclick="setMode('transfert')">⇄ Transfert</button>
         </div>
 
-        <div class="field">
+        <div class="field" id="wrap-prod">
           <label>Produit</label>
           <select id="f-prod" onchange="prefill()"></select>
         </div>
 
         <div class="field" id="wrap-vlieu">
           <label>Lieu de dépôt (source)</label>
-          <select id="f-vlieu"></select>
+          <select id="f-vlieu" onchange="renderCart()"></select>
+        </div>
+
+        <div id="wrap-cart" style="display:none">
+          <div id="cart-lines"></div>
+          <button class="cart-add" onclick="addCartLine()">+ Ajouter un produit</button>
+          <div class="cart-total"><span class="lbl">Total de la vente</span><span class="val" id="cart-total-val">0,00 €</span></div>
         </div>
 
         <div class="row2" id="wrap-transfer" style="display:none">
@@ -203,7 +223,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
           <div class="field"><label>Vers</label><select id="f-to"></select></div>
         </div>
 
-        <div class="row2">
+        <div class="row2" id="wrap-qtyprice">
           <div class="field">
             <label id="f-qty-label">Quantité</label>
             <input type="number" id="f-qty" value="" min="0.001" step="any" inputmode="decimal" placeholder="0"/>
@@ -468,17 +488,76 @@ function renderTxTab(){
     buildProdSel('f-prod');
     if(prev&&prodById(prev)) document.getElementById('f-prod').value=prev;
   }
+  const prevLieu=document.getElementById('f-vlieu').value;
   buildLieuSel('f-vlieu',true);
+  if(prevLieu&&state.lieux.some(l=>l.id===prevLieu)) document.getElementById('f-vlieu').value=prevLieu;
   buildLieuSel('f-from',true);
   buildLieuSel('f-to',true);
   document.getElementById('f-from').value=CENTRALE_ID;
   const firstNon=state.lieux.find(l=>l.id!==CENTRALE_ID);
   if(firstNon) document.getElementById('f-to').value=firstNon.id;
   prefill();
+  if(mode==='vente') renderCart();
   const recent=[...state.transactions].reverse().slice(0,6);
   const el=document.getElementById('recent-list');
   if(!recent.length){el.innerHTML='<div class="empty"><div class="ico">🔄</div>Aucune transaction.</div>';return;}
   el.innerHTML=recent.map(tx=>txHTML(tx,true)).join('');
+}
+
+/* ── Panier vente groupée ── */
+let cart = [];
+let cartSeq = 0;
+
+function addCartLine(){
+  if(!state.produits.length) return;
+  cart.push({lid:'c'+(++cartSeq), prodId:state.produits[0].id, qty:'', price:''});
+  renderCart();
+}
+function removeCartLine(lid){
+  cart=cart.filter(l=>l.lid!==lid);
+  if(!cart.length) addCartLine(); else renderCart();
+}
+function updateCartLine(lid,field,val){
+  const l=cart.find(x=>x.lid===lid);
+  if(!l) return;
+  l[field]=val;
+  if(field==='prodId') renderCart(); else updateCartTotal();
+}
+function updateCartTotal(){
+  const t=cart.reduce((s,l)=>s+(parseFloat(l.price)||0),0);
+  document.getElementById('cart-total-val').textContent=fmtM(t)+' €';
+}
+function renderCart(){
+  const el=document.getElementById('cart-lines');
+  if(!el) return;
+  if(!state.produits.length){ el.innerHTML=''; return; }
+  if(!cart.length) cart=[{lid:'c'+(++cartSeq),prodId:state.produits[0].id,qty:'',price:''}];
+  const lieuId=document.getElementById('f-vlieu').value;
+  const stocks=computeStock();
+  el.innerHTML=cart.map(l=>{
+    const p=prodById(l.prodId);
+    const unit=p?p.unit:'';
+    const avail=(stocks[l.prodId]&&stocks[l.prodId][lieuId])||0;
+    const opts=state.produits.map(pr=>`<option value="${pr.id}"${pr.id===l.prodId?' selected':''}>${pr.abr} — ${pr.nom}</option>`).join('');
+    const rm=cart.length>1?`<button class="cart-rm" onclick="removeCartLine('${l.lid}')" aria-label="Retirer">×</button>`:'';
+    return `<div class="cart-line">
+      <div class="cart-line-top">
+        <select class="cart-line-title" style="background:transparent;border:none;color:var(--text);font-family:inherit;outline:none" onchange="updateCartLine('${l.lid}','prodId',this.value)">${opts}</select>
+        ${rm}
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Qté (${unit}) · dispo ${fmtQ(avail,unit)}</label>
+          <input type="number" min="0.001" step="any" inputmode="decimal" placeholder="0" value="${l.qty}" oninput="updateCartLine('${l.lid}','qty',this.value)"/>
+        </div>
+        <div class="field">
+          <label>Prix (€)</label>
+          <input type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${l.price}" oninput="updateCartLine('${l.lid}','price',this.value)"/>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  updateCartTotal();
 }
 
 function setMode(m){
@@ -487,12 +566,16 @@ function setMode(m){
   document.getElementById('rbtn').className='vtbtn'+(m==='reception'?' active-r':'');
   document.getElementById('tbtn').className='vtbtn'+(m==='transfert'?' active-t':'');
   document.getElementById('wrap-vlieu').style.display=(m==='vente')?'block':'none';
+  document.getElementById('wrap-prod').style.display=(m==='vente')?'none':'block';
+  document.getElementById('wrap-cart').style.display=(m==='vente')?'block':'none';
+  document.getElementById('wrap-qtyprice').style.display=(m==='vente')?'none':'grid';
   document.getElementById('wrap-transfer').style.display=(m==='transfert')?'grid':'none';
   document.getElementById('wrap-price').style.display=(m==='transfert')?'none':'block';
   const labels={vente:'Enregistrer la vente',reception:'Enregistrer la réception',transfert:'Enregistrer le transfert'};
   document.getElementById('f-submit').textContent=labels[m];
   const plabels={vente:'Prix de vente (€)',reception:"Prix d'achat (€/u)"};
   document.getElementById('f-price-label').textContent=plabels[m]||'Prix (€)';
+  if(m==='vente') renderCart();
   prefill();
 }
 
@@ -517,7 +600,7 @@ function saveTx(){
   const qty=parseFloat(document.getElementById('f-qty').value);
   const note=document.getElementById('f-note').value.trim();
   const p=prodById(prodId);
-  if(!prodId||isNaN(qty)||qty<=0){ alert('Renseigne une quantité valide.'); return; }
+  if(mode!=='vente' && (!prodId||isNaN(qty)||qty<=0)){ alert('Renseigne une quantité valide.'); return; }
 
   const base={id:Date.now().toString(),prodId,qty,note,day:todayDay(),time:nowTime()};
 
@@ -527,12 +610,32 @@ function saveTx(){
   }
   else if(mode==='vente'){
     const lieuId=document.getElementById('f-vlieu').value;
-    const price=parseFloat(document.getElementById('f-price').value||0);
     if(!lieuId){ alert('Choisis un lieu.'); return; }
+    const lines=cart.filter(l=>parseFloat(l.qty)>0);
+    if(!lines.length){ alert('Renseigne au moins une quantité.'); return; }
     const s=computeStock();
-    const avail=(s[prodId]&&s[prodId][lieuId])||0;
-    if(avail<qty){ alert('Stock insuffisant à '+lieuName(lieuId)+' : '+fmtQ(avail,p.unit)); return; }
-    state.transactions.push({...base,type:'vente',lieuId,price});
+    const besoin={};
+    for(const l of lines){
+      besoin[l.prodId]=(besoin[l.prodId]||0)+parseFloat(l.qty);
+    }
+    for(const pid in besoin){
+      const avail=(s[pid]&&s[pid][lieuId])||0;
+      if(avail<besoin[pid]){
+        const pp=prodById(pid);
+        alert('Stock insuffisant pour '+(pp?pp.abr:'?')+' à '+lieuName(lieuId)+' : '+fmtQ(avail,pp?pp.unit:'')+' (demandé '+fmtQ(besoin[pid],pp?pp.unit:'')+')');
+        return;
+      }
+    }
+    const day=todayDay(), time=nowTime();
+    const groupId = lines.length>1 ? 'g'+Date.now() : null;
+    lines.forEach((l,i)=>{
+      state.transactions.push({
+        id:(Date.now()+i).toString(),
+        prodId:l.prodId, qty:parseFloat(l.qty), price:parseFloat(l.price||0),
+        note, day, time, type:'vente', lieuId, groupId
+      });
+    });
+    cart=[]; renderCart();
   }
   else if(mode==='transfert'){
     const fromId=document.getElementById('f-from').value;
@@ -618,7 +721,7 @@ function txHTML(tx,withEdit){
   const ql=`<div class="txql">${fmtQ(tx.qty,p?p.unit:'')}</div>`;
   if(tx.type==='vente'){
     pill='<span class="txpill pv">Vente</span>';
-    lieuTag=`<span class="txlieu">${lieuName(tx.lieuId)}</span>`;
+    lieuTag=`<span class="txlieu">${lieuName(tx.lieuId)}</span>`+(tx.groupId?` <span class="tx-group-tag">groupée</span>`:'');
     const total=parseFloat(tx.price||0);
     amt=`<div class="txamt" style="color:var(--green)">+${fmtM(total)} €</div>`;
   } else if(tx.type==='reception'){
