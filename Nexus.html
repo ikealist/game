@@ -90,11 +90,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .central-tag{font-size:10px;background:var(--accent-dim);color:var(--accent);padding:2px 8px;border-radius:99px;font-weight:600}
 /* action form */
 .vform{background:var(--bg2);border:.5px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px}
-.vtoggle{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:16px}
+.vtoggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px}
 .vtbtn{padding:11px 6px;border-radius:10px;border:.5px solid var(--border2);background:var(--bg3);color:var(--muted);font-size:13px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit;transition:all .15s}
 .vtbtn.active-v{background:var(--green-dim);border-color:rgba(74,222,128,.4);color:var(--green)}
 .vtbtn.active-r{background:var(--red-dim);border-color:rgba(248,113,113,.4);color:var(--red)}
 .vtbtn.active-t{background:var(--purple-dim);border-color:rgba(192,132,252,.4);color:var(--purple)}
+.vtbtn.active-j{background:var(--blue-dim);border-color:rgba(96,165,250,.4);color:var(--blue)}
 .ctoggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px}
 .ctbtn{padding:11px;border-radius:10px;border:.5px solid var(--border2);background:var(--bg3);color:var(--muted);font-size:13px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit}
 .ctbtn.active{background:var(--accent-dim);border-color:rgba(232,200,74,.4);color:var(--accent)}
@@ -199,7 +200,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
     <!-- TABLEAU -->
     <div class="sec active" id="tab-tableau">
       <div class="mgrid" id="metrics"></div>
-      <div class="seclabel">Valeur du stock par lieu (au prix d'achat)</div>
+      <div class="seclabel">Valeur du stock par lieu (coût réel)</div>
       <div id="lieu-metrics"></div>
     </div>
 
@@ -210,6 +211,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
           <button class="vtbtn active-v" id="vbtn" onclick="setMode('vente')">↑ Vente</button>
           <button class="vtbtn" id="rbtn" onclick="setMode('reception')">↓ Réception</button>
           <button class="vtbtn" id="tbtn" onclick="setMode('transfert')">⇄ Transfert</button>
+          <button class="vtbtn" id="jbtn" onclick="setMode('ajustement')">⚖ Ajuster</button>
         </div>
 
         <div class="field" id="wrap-prod">
@@ -226,6 +228,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
           <label>Lieu de réception</label>
           <select id="f-rlieu"></select>
         </div>
+
+        <div class="field" id="wrap-jlieu" style="display:none">
+          <label>Lieu à corriger</label>
+          <select id="f-jlieu" onchange="jPreview()"></select>
+        </div>
+        <div id="j-info" style="font-size:12px;color:var(--muted);margin:-8px 0 12px"></div>
 
         <div class="field" id="wrap-vendeur">
           <label>Vendeur</label>
@@ -270,7 +278,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
     <!-- JOURNAL (daté) -->
     <div class="sec" id="tab-journal">
-      <button class="io-btn" id="report-btn" style="width:100%;margin-bottom:12px;color:var(--blue);border-color:rgba(96,165,250,.3)" onclick="exportReport()">📄 Générer le rapport</button>
+      <button class="io-btn" id="report-btn" style="width:100%;margin-bottom:12px;color:var(--blue);border-color:rgba(96,165,250,.3)" onclick="exportReport()">📄 Ouvrir le rapport</button>
       <div class="fbar" id="journal-dates"></div>
       <div class="fbar" id="journal-types"></div>
       <div class="mcard wide" id="journal-summary" style="margin-bottom:14px"></div>
@@ -290,6 +298,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       </div>
       <input type="file" id="import-file" accept=".json" onchange="importJSON(event)"/>
       <button class="io-btn" style="width:100%;margin-bottom:12px;color:var(--muted)" onclick="changePin()">🔒 Changer le code d'accès</button>
+      <div class="vform" style="padding:14px;margin-bottom:12px">
+        <div class="field" style="margin-bottom:0">
+          <label>Trésorerie de départ (€)</label>
+          <input type="number" id="treso-init" step="0.01" inputmode="decimal" placeholder="0.00" onchange="saveTreso()"/>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Le capital dont tu disposais avant d'utiliser l'application. Les achats le diminuent, les ventes l'augmentent.</div>
+      </div>
       <div class="ctoggle" style="grid-template-columns:1fr 1fr 1fr">
         <button class="ctbtn active" id="cfg-tab-prod" onclick="setCfgTab('prod')">Produits</button>
         <button class="ctbtn" id="cfg-tab-lieu" onclick="setCfgTab('lieu')">Lieux</button>
@@ -432,7 +447,7 @@ const DATA_VERSION = 2;
 
 /* Normalise n'importe quel ancien format vers le format courant */
 function migrateState(s){
-  const out={produits:[],lieux:[],vendeurs:[],transactions:[]};
+  const out={produits:[],lieux:[],vendeurs:[],transactions:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
   const UNITS=['g','kg','mg'];
 
   out.produits=(s.produits||[]).map(p=>({
@@ -476,7 +491,7 @@ function migrateState(s){
   return out;
 }
 
-let state = { produits:[], lieux:[], vendeurs:[], transactions:[] };
+let state = { produits:[], lieux:[], vendeurs:[], transactions:[], tresorerieInitiale:0 };
 let curTab = 'tableau';
 let mode = 'vente';
 let editMode = 'vente';
@@ -492,7 +507,7 @@ let openStockIds = new Set();
 function load() {
   try {
     const d = localStorage.getItem(DB);
-    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; }
+    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; state.tresorerieInitiale=s.tresorerieInitiale||0; }
   } catch(e){}
   ensureCentrale();
   backfillCosts();
@@ -616,6 +631,11 @@ function updateHdr(){
   document.getElementById('fab').style.display=(curTab==='tx')?'none':'flex';
 }
 
+function saveTreso(){
+  const v=parseFloat(document.getElementById('treso-init').value);
+  state.tresorerieInitiale = isNaN(v)?0:v;
+  save(); renderMetrics();
+}
 function renderMetrics(){
   const stocks=computeStock();
   const cst=cmpState();
@@ -627,8 +647,13 @@ function renderMetrics(){
     if(tx.type==='ajustement'&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
   });
   const marge=revenu-cogs-pertes;
+  const treso=parseFloat(state.tresorerieInitiale||0)+revenu-investi;
+  const patrimoine=treso+valStock;
   const zeros=state.produits.filter(p=>(stocks[p.id]?stocks[p.id]._total:0)<=0).length;
   document.getElementById('metrics').innerHTML=`
+    <div class="mcard wide"><div class="mlabel">Trésorerie actuelle</div><div class="mval ${treso>=0?'cg':'cr'}">${fmtM(treso)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + ventes − achats</div></div>
+    <div class="mcard wide"><div class="mlabel">Trésorerie + valeur du stock</div><div class="mval cb">${fmtM(patrimoine)} €</div></div>
     <div class="mcard wide"><div class="mlabel">Valeur du stock (coût réel)</div><div class="mval cy">${fmtM(valStock)} €</div></div>
     <div class="mcard"><div class="mlabel">Revenu des ventes</div><div class="mval cg">+${fmtM(revenu)} €</div></div>
     <div class="mcard"><div class="mlabel">Marge nette</div><div class="mval ${marge>=0?'cg':'cr'}">${marge>=0?'+':''}${fmtM(marge)} €</div></div>
@@ -670,6 +695,9 @@ function renderTxTab(){
   const prevR=document.getElementById('f-rlieu').value;
   buildLieuSel('f-rlieu',true);
   if(prevR&&state.lieux.some(l=>l.id===prevR)) document.getElementById('f-rlieu').value=prevR;
+  const prevJ=document.getElementById('f-jlieu').value;
+  buildLieuSel('f-jlieu',true);
+  if(prevJ&&state.lieux.some(l=>l.id===prevJ)) document.getElementById('f-jlieu').value=prevJ;
   const vs=document.getElementById('f-vendeur');
   const prevV=vs.value;
   vs.innerHTML=state.vendeurs.length
@@ -828,28 +856,53 @@ function setMode(m){
   document.getElementById('vbtn').className='vtbtn'+(m==='vente'?' active-v':'');
   document.getElementById('rbtn').className='vtbtn'+(m==='reception'?' active-r':'');
   document.getElementById('tbtn').className='vtbtn'+(m==='transfert'?' active-t':'');
+  document.getElementById('jbtn').className='vtbtn'+(m==='ajustement'?' active-j':'');
   document.getElementById('wrap-vlieu').style.display=(m==='vente')?'block':'none';
   document.getElementById('wrap-rlieu').style.display=(m==='reception')?'block':'none';
+  document.getElementById('wrap-jlieu').style.display=(m==='ajustement')?'block':'none';
   document.getElementById('wrap-vendeur').style.display=(m==='vente')?'block':'none';
   document.getElementById('wrap-prod').style.display=(m==='vente')?'none':'block';
   document.getElementById('wrap-cart').style.display=(m==='vente')?'block':'none';
   document.getElementById('wrap-qtyprice').style.display=(m==='vente')?'none':'grid';
   document.getElementById('wrap-transfer').style.display=(m==='transfert')?'grid':'none';
-  document.getElementById('wrap-price').style.display=(m==='transfert')?'none':'block';
-  const labels={vente:'Enregistrer la vente',reception:'Enregistrer la réception',transfert:'Enregistrer le transfert'};
+  document.getElementById('wrap-price').style.display=(m==='transfert'||m==='ajustement')?'none':'block';
+  document.getElementById('j-info').style.display=(m==='ajustement')?'block':'none';
+  const labels={vente:'Enregistrer la vente',reception:'Enregistrer la réception',transfert:'Enregistrer le transfert',ajustement:'Enregistrer la correction'};
   document.getElementById('f-submit').textContent=labels[m];
   const plabels={vente:'Prix de vente (€)',reception:"Prix d'achat (€/u)"};
   document.getElementById('f-price-label').textContent=plabels[m]||'Prix (€)';
   if(m==='vente') renderCart();
   prefill();
+  const fn=document.getElementById('f-note');
+  fn.placeholder = (m==='ajustement') ? 'motif obligatoire (ex : non livré, casse)' : 'optionnel';
+  if(m==='ajustement') jPreview();
 }
 
 function prefill(){
   const p=prodById(document.getElementById('f-prod').value);
-  document.getElementById('f-qty-label').textContent=p?`Quantité (${p.unit})`:'Quantité';
+  document.getElementById('f-qty-label').textContent=p?(mode==='ajustement'?`Quantité réelle (${p.unit})`:`Quantité (${p.unit})`):'Quantité';
+  if(mode==='ajustement') jPreview();
   if(mode==='reception' && p) document.getElementById('f-price').value=fmt(p.pa);
   updateTotalPreview();
 }
+function jPreview(){
+  const el=document.getElementById('j-info');
+  if(!el||mode!=='ajustement') return;
+  const pid=document.getElementById('f-prod').value;
+  const lid=document.getElementById('f-jlieu').value;
+  const p=prodById(pid);
+  if(!p||!lid){ el.innerHTML=''; return; }
+  const cur=(computeStock()[pid]||{})[lid]||0;
+  const v=document.getElementById('f-qty').value;
+  let extra='';
+  if(v!==''){
+    const d=parseFloat(v)-cur;
+    extra = (isNaN(d)||d===0) ? ' · <span style="color:var(--muted)">aucun écart</span>'
+      : ` · écart <b style="color:${d>0?'var(--green)':'var(--red)'}">${d>0?'+':''}${fmtQ(d,p.unit)}</b>`;
+  }
+  el.innerHTML=`Stock enregistré à ${lieuName(lid)} : <b style="color:var(--accent)">${fmtQ(cur,p.unit)}</b>${extra}`;
+}
+
 function updateTotalPreview(){
   const el=document.getElementById('total-preview');
   if(mode!=='reception'){ el.innerHTML=''; return; }
@@ -857,7 +910,7 @@ function updateTotalPreview(){
   const price=parseFloat(document.getElementById('f-price').value||0);
   el.innerHTML=(qty>0&&price>0)?`Total investi : <b>${fmtM(qty*price)} €</b>`:'';
 }
-document.addEventListener('input',e=>{ if(e.target.id==='f-qty'||e.target.id==='f-price') updateTotalPreview(); });
+document.addEventListener('input',e=>{ if(e.target.id==='f-qty'||e.target.id==='f-price'){ updateTotalPreview(); if(mode==='ajustement') jPreview(); } });
 
 function saveTx(){
   if(!state.produits.length){ alert("Ajoute d'abord un produit dans Config."); return; }
@@ -865,7 +918,7 @@ function saveTx(){
   const qty=parseFloat(document.getElementById('f-qty').value);
   const note=document.getElementById('f-note').value.trim();
   const p=prodById(prodId);
-  if(mode!=='vente' && (!prodId||isNaN(qty)||qty<=0)){ alert('Renseigne une quantité valide.'); return; }
+  if(mode!=='vente' && mode!=='ajustement' && (!prodId||isNaN(qty)||qty<=0)){ alert('Renseigne une quantité valide.'); return; }
 
   const base={id:Date.now().toString(),prodId,qty,note,day:todayDay(),time:nowTime()};
 
@@ -910,6 +963,21 @@ function saveTx(){
       });
     });
     cart=[]; renderCart();
+  }
+  else if(mode==='ajustement'){
+    const lid=document.getElementById('f-jlieu').value;
+    if(!lid){ alert('Choisis un lieu.'); return; }
+    const cur=(computeStock()[prodId]||{})[lid]||0;
+    const reel=parseFloat(document.getElementById('f-qty').value);
+    if(isNaN(reel)||reel<0){ alert('Renseigne la quantité réelle constatée.'); return; }
+    const delta=+(reel-cur).toFixed(4);
+    if(delta===0){ alert('Aucun écart à enregistrer.'); return; }
+    if(!note){ alert('Indique un motif dans la note (ex : non livré, casse, recomptage).'); return; }
+    state.transactions.push({
+      id:Date.now().toString(), type:'ajustement',
+      prodId, lieuId:lid, qty:delta, cost:+currentCost(prodId).toFixed(4),
+      note, day:todayDay(), time:nowTime()
+    });
   }
   else if(mode==='transfert'){
     const fromId=document.getElementById('f-from').value;
@@ -967,7 +1035,7 @@ function renderJournal(){
     </div>`;
 
   const rb=document.getElementById('report-btn');
-  if(rb) rb.textContent = journalDate==='all' ? '📄 Générer le rapport (tout)' : '📄 Générer le rapport du '+journalDate;
+  if(rb) rb.textContent = journalDate==='all' ? '📄 Ouvrir le rapport (tout)' : '📄 Ouvrir le rapport du '+journalDate;
 
   const el=document.getElementById('journal-list');
   if(!txs.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
@@ -1243,6 +1311,8 @@ function deleteTx(){
 
 /* ── Produits ── */
 function renderProduits(){
+  const ti=document.getElementById('treso-init');
+  if(ti && document.activeElement!==ti) ti.value=state.tresorerieInitiale||'';
   const cst=cmpState();
   document.getElementById('pctr').textContent=`${state.produits.length} produits`;
   const el=document.getElementById('prod-list');
@@ -1343,6 +1413,12 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 
 function exportReport(){
   const cstR=cmpState();
+  let revTot=0,invTot=0;
+  state.transactions.forEach(t=>{
+    if(t.type==='vente') revTot+=parseFloat(t.price||0);
+    if(t.type==='reception') invTot+=parseFloat(t.qty)*parseFloat(t.price||0);
+  });
+  const treso=parseFloat(state.tresorerieInitiale||0)+revTot-invTot;
   const periode = journalDate==='all' ? 'Toutes périodes' : journalDate;
   const txs = state.transactions.filter(t=> journalDate==='all' || t.day===journalDate);
   if(!txs.length){ alert('Aucune transaction sur cette période.'); return; }
@@ -1456,7 +1532,7 @@ th{background:#242424;color:#888;font-size:11px;text-transform:uppercase;letter-
 td{padding:9px 12px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top}
 td.n{text-align:right;font-family:ui-monospace,monospace;white-space:nowrap}
 .sm{font-size:12px;color:#aaa}
-.g{color:#4ade80}.r{color:#f87171}.m{color:#888}.y{color:#e8c84a}.o{color:#fb923c}
+.g{color:#4ade80}.r{color:#f87171}.m{color:#888}.y{color:#e8c84a}.o{color:#fb923c}.b{color:#60a5fa}
 .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;white-space:nowrap}
 .pv{background:rgba(74,222,128,.15);color:#4ade80}
 .pr{background:rgba(248,113,113,.15);color:#f87171}
@@ -1478,6 +1554,10 @@ details[open] summary.det::after{content:' ▴'}
   <div class="card"><div class="l">Investi (achats)</div><div class="v r">−${esc(fmtM(inv))} €</div></div>
   <div class="card"><div class="l">Pertes</div><div class="v ${pertes>0?'o':'g'}">−${esc(fmtM(pertes))} €</div></div>
   <div class="card"><div class="l">Valeur du stock</div><div class="v y">${esc(fmtM(valStock))} €</div></div>
+</div>
+<div class="cards" style="margin-top:10px">
+  <div class="card"><div class="l">Trésorerie actuelle</div><div class="v ${treso>=0?'g':'r'}">${esc(fmtM(treso))} €</div></div>
+  <div class="card"><div class="l">Trésorerie + stock</div><div class="v b">${esc(fmtM(treso+valStock))} €</div></div>
 </div>
 
 ${vendRows?`<h2>Ventes par vendeur</h2>
@@ -1501,11 +1581,16 @@ ${prodRows?`<h2>Ventes par produit</h2>
 
   const blob=new Blob([html],{type:'text/html'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
   const slug = journalDate==='all' ? 'global' : journalDate.replace(/\//g,'-');
-  a.href=url; a.download=`rapport-${slug}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const win=window.open(url,'_blank');
+  if(!win){
+    // onglet bloqué par le navigateur : on retombe sur le téléchargement
+    const a=document.createElement('a');
+    a.href=url; a.download=`rapport-${slug}.html`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    alert("L'ouverture d'onglet a été bloquée par le navigateur : le rapport a été téléchargé à la place.");
+  }
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 /* ── Export / Import JSON ── */
@@ -1533,6 +1618,7 @@ function importJSON(ev){
       state.lieux=mig.lieux;
       state.vendeurs=mig.vendeurs;
       state.transactions=mig.transactions;
+      state.tresorerieInitiale=mig.tresorerieInitiale;
       ensureCentrale();
       save(); render();
       alert('Import réussi : '+state.produits.length+' produits, '+state.lieux.length+' lieux, '+state.transactions.length+' transactions.');
