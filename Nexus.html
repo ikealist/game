@@ -428,6 +428,53 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <script>
 const DB = 'stockdepots_v2';
 const CENTRALE_ID = 'centrale';
+const DATA_VERSION = 2;
+
+/* Normalise n'importe quel ancien format vers le format courant */
+function migrateState(s){
+  const out={produits:[],lieux:[],vendeurs:[],transactions:[]};
+  const UNITS=['g','kg','mg'];
+
+  out.produits=(s.produits||[]).map(p=>({
+    id:String(p.id),
+    abr:p.abr||'?',
+    nom:p.nom||p.name||'Sans nom',
+    pa:parseFloat(p.pa)||0,
+    unit:UNITS.includes(p.unit)?p.unit:'g'
+  }));
+
+  out.lieux=(s.lieux||[]).map(l=>({
+    id:String(l.id),
+    nom:l.nom||l.name||'Sans nom',
+    ...(l.id===CENTRALE_ID?{central:true}:{})
+  }));
+
+  out.vendeurs=(s.vendeurs||[]).map(v=>({
+    id:String(v.id),
+    nom:v.nom||v.name||'Sans nom'
+  }));
+
+  out.transactions=(s.transactions||[]).map(t=>{
+    const o={...t};
+    o.id=String(t.id);
+    o.qty=parseFloat(t.qty)||0;
+    // ancien type "achat" -> "reception"
+    if(o.type==='achat') o.type='reception';
+    // ancien champ "date" -> day + time
+    if(!o.day && t.date){
+      const m=String(t.date).match(/^(\S+)\s*(.*)$/);
+      o.day=m?m[1]:String(t.date); o.time=m?m[2]:'';
+    }
+    if(!o.day){ o.day=todayDay(); o.time=o.time||''; }
+    // lieu manquant sur reception/vente -> centrale
+    if((o.type==='reception'||o.type==='vente')&&!o.lieuId) o.lieuId=CENTRALE_ID;
+    if(o.type==='transfert'){ o.fromId=o.fromId||CENTRALE_ID; o.toId=o.toId||CENTRALE_ID; }
+    if(o.price!=null) o.price=parseFloat(o.price)||0;
+    delete o.unit; // l'unité vit sur le produit
+    return o;
+  });
+  return out;
+}
 
 let state = { produits:[], lieux:[], vendeurs:[], transactions:[] };
 let curTab = 'tableau';
@@ -445,9 +492,10 @@ let openStockIds = new Set();
 function load() {
   try {
     const d = localStorage.getItem(DB);
-    if (d) { const s=JSON.parse(d); state.produits=s.produits||[]; state.lieux=s.lieux||[]; state.vendeurs=s.vendeurs||[]; state.transactions=s.transactions||[]; }
+    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; }
   } catch(e){}
   ensureCentrale();
+  save();
   render();
 }
 function save() { try{ localStorage.setItem(DB,JSON.stringify(state)); }catch(e){} }
@@ -1372,7 +1420,7 @@ ${prodRows?`<h2>Ventes par produit</h2>
 
 /* ── Export / Import JSON ── */
 function exportJSON(){
-  const data=JSON.stringify(state,null,2);
+  const data=JSON.stringify({version:DATA_VERSION,exportDate:new Date().toISOString(),...state},null,2);
   const blob=new Blob([data],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -1390,13 +1438,14 @@ function importJSON(ev){
       const s=JSON.parse(e.target.result);
       if(!s||typeof s!=='object') throw new Error('format');
       if(!confirm('Remplacer toutes les données actuelles par ce fichier ?')){ ev.target.value=''; return; }
-      state.produits=s.produits||[];
-      state.lieux=s.lieux||[];
-      state.vendeurs=s.vendeurs||[];
-      state.transactions=s.transactions||[];
+      const mig=migrateState(s);
+      state.produits=mig.produits;
+      state.lieux=mig.lieux;
+      state.vendeurs=mig.vendeurs;
+      state.transactions=mig.transactions;
       ensureCentrale();
       save(); render();
-      alert('Import réussi.');
+      alert('Import réussi : '+state.produits.length+' produits, '+state.lieux.length+' lieux, '+state.transactions.length+' transactions.');
     }catch(err){ alert('Fichier invalide : '+err.message); }
     ev.target.value='';
   };
