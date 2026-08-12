@@ -71,6 +71,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .pv{background:var(--green-dim);color:var(--green)}
 .pr{background:var(--red-dim);color:var(--red)}
 .pt{background:var(--purple-dim);color:var(--purple)}
+.pj{background:var(--blue-dim);color:var(--blue)}
 .txlieu{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--blue-dim);color:var(--blue)}
 .txprod{font-size:13px;font-weight:500}
 .txmeta{font-size:11px;color:var(--muted);margin-top:2px}
@@ -152,6 +153,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .cart-total .lbl{font-size:12px;color:var(--green);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
 .cart-total .val{font-size:17px;font-weight:600;font-family:'DM Mono',monospace;color:var(--green)}
 .tx-group-tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--purple-dim);color:var(--purple)}
+.txvend{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--amber-dim);color:var(--amber)}
+.grp-sub{display:none;border-top:.5px solid var(--border);margin-top:10px;padding-top:8px}
+.txitem.open .grp-sub{display:block}
+.grp-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;font-size:12px}
+.grp-row .gp{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp-row .gq{color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap}
+.grp-row .gv{font-family:'DM Mono',monospace;color:var(--green);white-space:nowrap}
+.txchev{width:14px;height:14px;stroke-width:2;fill:none;stroke:var(--faint);stroke-linecap:round;stroke-linejoin:round;transition:transform .2s;vertical-align:middle}
+.txitem.open .txchev{transform:rotate(180deg)}
 /* lock screen */
 #lock-screen{position:fixed;inset:0;background:var(--bg);z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .lock-icon{font-size:40px;margin-bottom:14px}
@@ -212,6 +222,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
           <select id="f-vlieu" onchange="renderCart()"></select>
         </div>
 
+        <div class="field" id="wrap-rlieu" style="display:none">
+          <label>Lieu de réception</label>
+          <select id="f-rlieu"></select>
+        </div>
+
+        <div class="field" id="wrap-vendeur">
+          <label>Vendeur</label>
+          <select id="f-vendeur"></select>
+        </div>
+
         <div id="wrap-cart" style="display:none">
           <div id="cart-lines"></div>
           <button class="cart-add" onclick="addCartLine()">+ Ajouter un produit</button>
@@ -250,6 +270,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
     <!-- JOURNAL (daté) -->
     <div class="sec" id="tab-journal">
+      <button class="io-btn" id="report-btn" style="width:100%;margin-bottom:12px;color:var(--blue);border-color:rgba(96,165,250,.3)" onclick="exportReport()">📄 Générer le rapport</button>
       <div class="fbar" id="journal-dates"></div>
       <div class="fbar" id="journal-types"></div>
       <div class="mcard wide" id="journal-summary" style="margin-bottom:14px"></div>
@@ -269,9 +290,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       </div>
       <input type="file" id="import-file" accept=".json" onchange="importJSON(event)"/>
       <button class="io-btn" style="width:100%;margin-bottom:12px;color:var(--muted)" onclick="changePin()">🔒 Changer le code d'accès</button>
-      <div class="ctoggle">
+      <div class="ctoggle" style="grid-template-columns:1fr 1fr 1fr">
         <button class="ctbtn active" id="cfg-tab-prod" onclick="setCfgTab('prod')">Produits</button>
         <button class="ctbtn" id="cfg-tab-lieu" onclick="setCfgTab('lieu')">Lieux</button>
+        <button class="ctbtn" id="cfg-tab-vend" onclick="setCfgTab('vend')">Vendeurs</button>
       </div>
       <div id="cfg-prod-view">
         <div class="banner">✏️ Abréviation, nom, unité (masse) et prix d'achat de référence (sert à valoriser le stock et à pré-remplir les réceptions).</div>
@@ -279,9 +301,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
         <div id="prod-list"></div>
       </div>
       <div id="cfg-lieu-view" style="display:none">
-        <div class="banner">📍 La <b>Centrale</b> reçoit les stocks par défaut. Ajoute tes lieux de stockage, puis transfère depuis la Centrale.</div>
+        <div class="banner">📍 La <b>Centrale</b> est un lieu comme un autre, non supprimable. Ajoute tes lieux de stockage ici.</div>
         <div class="pctr" id="lctr"></div>
         <div id="lieu-list"></div>
+      </div>
+      <div id="cfg-vend-view" style="display:none">
+        <div class="banner">👤 Les vendeurs sont indépendants des lieux : un vendeur peut puiser dans n'importe quel dépôt, le bénéfice lui reste attribué.</div>
+        <div class="pctr" id="vctr"></div>
+        <div id="vend-list"></div>
       </div>
     </div>
 
@@ -321,6 +348,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
     </div>
     <div class="field"><label>Produit</label><select id="e-prod" onchange="editUnitLabel()"></select></div>
     <div class="field" id="e-wrap-vlieu"><label>Lieu de dépôt</label><select id="e-vlieu"></select></div>
+    <div class="field" id="e-wrap-vendeur"><label>Vendeur</label><select id="e-vendeur"></select></div>
     <div class="row2" id="e-wrap-transfer" style="display:none">
       <div class="field"><label>De</label><select id="e-from"></select></div>
       <div class="field"><label>Vers</label><select id="e-to"></select></div>
@@ -358,6 +386,34 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
   </div>
 </div>
 
+<!-- Vendeur sheet -->
+<div class="sbg" id="vend-bg" onclick="closeVendSheet(event)">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle" id="vend-sheet-title">Nouveau vendeur</div>
+    <div class="field"><label>Nom du vendeur</label><input type="text" id="vm-nom" placeholder="ex: Karim, Moi..."/></div>
+    <button class="bfull" onclick="saveVend()">Sauvegarder</button>
+    <button class="bcancel" onclick="closeVendSheet()">Annuler</button>
+  </div>
+</div>
+
+<!-- Ajustement sheet -->
+<div class="sbg" id="adj-bg" onclick="closeAdjSheet(event)">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle">Ajuster le stock</div>
+    <div id="adj-ctx" style="font-size:13px;color:var(--muted);margin-bottom:14px"></div>
+    <div class="field">
+      <label id="adj-label">Quantité réelle constatée</label>
+      <input type="number" id="adj-qty" step="any" inputmode="decimal" placeholder="0" oninput="adjPreview()"/>
+    </div>
+    <div id="adj-delta" style="font-size:13px;margin:-6px 0 14px;text-align:right"></div>
+    <div class="field"><label>Motif</label><input type="text" id="adj-note" placeholder="ex: pesée réelle, casse, perte"/></div>
+    <button class="bfull" onclick="saveAdj()">Enregistrer l'ajustement</button>
+    <button class="bcancel" onclick="closeAdjSheet()">Annuler</button>
+  </div>
+</div>
+
 <!-- Lieu sheet -->
 <div class="sbg" id="lieu-bg" onclick="closeLieuSheet(event)">
   <div class="sheet">
@@ -373,7 +429,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 const DB = 'stockdepots_v2';
 const CENTRALE_ID = 'centrale';
 
-let state = { produits:[], lieux:[], transactions:[] };
+let state = { produits:[], lieux:[], vendeurs:[], transactions:[] };
 let curTab = 'tableau';
 let mode = 'vente';
 let editMode = 'vente';
@@ -389,7 +445,7 @@ let openStockIds = new Set();
 function load() {
   try {
     const d = localStorage.getItem(DB);
-    if (d) { const s=JSON.parse(d); state.produits=s.produits||[]; state.lieux=s.lieux||[]; state.transactions=s.transactions||[]; }
+    if (d) { const s=JSON.parse(d); state.produits=s.produits||[]; state.lieux=s.lieux||[]; state.vendeurs=s.vendeurs||[]; state.transactions=s.transactions||[]; }
   } catch(e){}
   ensureCentrale();
   render();
@@ -411,6 +467,7 @@ function stockFrom(txList){
   txList.forEach(tx=>{
     if(tx.type==='reception') bump(tx.prodId, tx.lieuId||CENTRALE_ID, +parseFloat(tx.qty));
     else if(tx.type==='vente') bump(tx.prodId, tx.lieuId, -parseFloat(tx.qty));
+    else if(tx.type==='ajustement') bump(tx.prodId, tx.lieuId, parseFloat(tx.qty));
     else if(tx.type==='transfert'){ bump(tx.prodId, tx.fromId, -parseFloat(tx.qty)); bump(tx.prodId, tx.toId, +parseFloat(tx.qty)); }
   });
   return s;
@@ -432,7 +489,7 @@ function prodById(id){ return state.produits.find(p=>p.id===id); }
 function prodPA(id){ const p=prodById(id); return p?parseFloat(p.pa||0):0; }
 
 /* ── Render ── */
-function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); updateHdr(); }
+function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); renderVendeurs(); updateHdr(); }
 
 function updateHdr(){
   const nonCentral = state.lieux.filter(l=>l.id!==CENTRALE_ID).length;
@@ -491,6 +548,15 @@ function renderTxTab(){
   const prevLieu=document.getElementById('f-vlieu').value;
   buildLieuSel('f-vlieu',true);
   if(prevLieu&&state.lieux.some(l=>l.id===prevLieu)) document.getElementById('f-vlieu').value=prevLieu;
+  const prevR=document.getElementById('f-rlieu').value;
+  buildLieuSel('f-rlieu',true);
+  if(prevR&&state.lieux.some(l=>l.id===prevR)) document.getElementById('f-rlieu').value=prevR;
+  const vs=document.getElementById('f-vendeur');
+  const prevV=vs.value;
+  vs.innerHTML=state.vendeurs.length
+    ? state.vendeurs.map(v=>`<option value="${v.id}">${v.nom}</option>`).join('')
+    : '<option value="">— aucun vendeur défini —</option>';
+  if(prevV&&state.vendeurs.some(v=>v.id===prevV)) vs.value=prevV;
   buildLieuSel('f-from',true);
   buildLieuSel('f-to',true);
   document.getElementById('f-from').value=CENTRALE_ID;
@@ -501,7 +567,7 @@ function renderTxTab(){
   const recent=[...state.transactions].reverse().slice(0,6);
   const el=document.getElementById('recent-list');
   if(!recent.length){el.innerHTML='<div class="empty"><div class="ico">🔄</div>Aucune transaction.</div>';return;}
-  el.innerHTML=recent.map(tx=>txHTML(tx,true)).join('');
+  el.innerHTML=renderTxList(recent);
 }
 
 /* ── Panier vente groupée ── */
@@ -560,12 +626,91 @@ function renderCart(){
   updateCartTotal();
 }
 
+/* ── Vendeurs ── */
+let editVendIdx = null;
+function vendName(id){ const v=state.vendeurs.find(x=>x.id===id); return v?v.nom:'—'; }
+function renderVendeurs(){
+  const c=document.getElementById('vctr'); if(c) c.textContent=`${state.vendeurs.length} vendeurs`;
+  const el=document.getElementById('vend-list'); if(!el) return;
+  if(!state.vendeurs.length){el.innerHTML='<div class="empty"><div class="ico">👤</div>Aucun vendeur.</div>';return;}
+  el.innerHTML=state.vendeurs.map((v,i)=>`
+    <div class="pitem">
+      <div class="pinfo"><div class="pnom">${v.nom}</div></div>
+      <div class="pbtns">
+        <button class="ibtn edt" onclick="editVend(${i})"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        <button class="ibtn del" onclick="deleteVend(${i})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+      </div>
+    </div>`).join('');
+}
+function openVendSheet(){
+  document.getElementById('vend-sheet-title').textContent=editVendIdx===null?'Nouveau vendeur':'Modifier le vendeur';
+  if(editVendIdx===null) document.getElementById('vm-nom').value='';
+  document.getElementById('vend-bg').classList.add('open');
+}
+function closeVendSheet(e){ if(!e||e.target===document.getElementById('vend-bg')){ document.getElementById('vend-bg').classList.remove('open'); editVendIdx=null; } }
+function editVend(i){ editVendIdx=i; document.getElementById('vm-nom').value=state.vendeurs[i].nom; openVendSheet(); }
+function deleteVend(i){
+  const v=state.vendeurs[i];
+  const hasTx=state.transactions.some(t=>t.vendeurId===v.id);
+  if(!confirm(hasTx?`"${v.nom}" a des ventes liées. Supprimer quand même ?`:`Supprimer "${v.nom}" ?`)) return;
+  state.vendeurs.splice(i,1); save(); render();
+}
+function saveVend(){
+  const nom=document.getElementById('vm-nom').value.trim();
+  if(!nom){alert('Nom obligatoire.');return;}
+  if(state.vendeurs.some((v,i)=>v.nom.toLowerCase()===nom.toLowerCase()&&i!==editVendIdx)){alert(`"${nom}" déjà utilisé.`);return;}
+  if(editVendIdx!==null) state.vendeurs[editVendIdx]={...state.vendeurs[editVendIdx],nom};
+  else state.vendeurs.push({id:'v'+Date.now(),nom});
+  save(); closeVendSheet(); editVendIdx=null; render();
+}
+
+/* ── Ajustement de stock ── */
+let adjCtx = null;
+function openAdj(prodId,lieuId){
+  const p=prodById(prodId); if(!p) return;
+  const s=computeStock();
+  const cur=(s[prodId]&&s[prodId][lieuId])||0;
+  adjCtx={prodId,lieuId,cur,unit:p.unit};
+  document.getElementById('adj-ctx').innerHTML=`<b style="color:var(--text)">${p.abr} — ${p.nom}</b><br>à ${lieuName(lieuId)} · stock enregistré : <b style="color:var(--accent)">${fmtQ(cur,p.unit)}</b>`;
+  document.getElementById('adj-label').textContent=`Quantité réelle constatée (${p.unit})`;
+  document.getElementById('adj-qty').value='';
+  document.getElementById('adj-note').value='';
+  document.getElementById('adj-delta').innerHTML='';
+  document.getElementById('adj-bg').classList.add('open');
+}
+function adjPreview(){
+  if(!adjCtx) return;
+  const v=document.getElementById('adj-qty').value;
+  const el=document.getElementById('adj-delta');
+  if(v===''){ el.innerHTML=''; return; }
+  const d=parseFloat(v)-adjCtx.cur;
+  if(isNaN(d)||d===0){ el.innerHTML='<span style="color:var(--muted)">Aucun écart</span>'; return; }
+  el.innerHTML=`Écart : <b style="color:${d>0?'var(--green)':'var(--red)'};font-family:'DM Mono',monospace">${d>0?'+':''}${fmtQ(d,adjCtx.unit)}</b>`;
+}
+function closeAdjSheet(e){ if(!e||e.target===document.getElementById('adj-bg')){ document.getElementById('adj-bg').classList.remove('open'); adjCtx=null; } }
+function saveAdj(){
+  if(!adjCtx) return;
+  const v=parseFloat(document.getElementById('adj-qty').value);
+  if(isNaN(v)||v<0){ alert('Renseigne une quantité valide.'); return; }
+  const delta=v-adjCtx.cur;
+  if(delta===0){ alert('Aucun écart à enregistrer.'); return; }
+  state.transactions.push({
+    id:Date.now().toString(), type:'ajustement',
+    prodId:adjCtx.prodId, lieuId:adjCtx.lieuId, qty:delta,
+    note:document.getElementById('adj-note').value.trim(),
+    day:todayDay(), time:nowTime()
+  });
+  save(); closeAdjSheet(); render();
+}
+
 function setMode(m){
   mode=m;
   document.getElementById('vbtn').className='vtbtn'+(m==='vente'?' active-v':'');
   document.getElementById('rbtn').className='vtbtn'+(m==='reception'?' active-r':'');
   document.getElementById('tbtn').className='vtbtn'+(m==='transfert'?' active-t':'');
   document.getElementById('wrap-vlieu').style.display=(m==='vente')?'block':'none';
+  document.getElementById('wrap-rlieu').style.display=(m==='reception')?'block':'none';
+  document.getElementById('wrap-vendeur').style.display=(m==='vente')?'block':'none';
   document.getElementById('wrap-prod').style.display=(m==='vente')?'none':'block';
   document.getElementById('wrap-cart').style.display=(m==='vente')?'block':'none';
   document.getElementById('wrap-qtyprice').style.display=(m==='vente')?'none':'grid';
@@ -606,7 +751,8 @@ function saveTx(){
 
   if(mode==='reception'){
     const price=parseFloat(document.getElementById('f-price').value||0);
-    state.transactions.push({...base,type:'reception',lieuId:CENTRALE_ID,price});
+    const rlieu=document.getElementById('f-rlieu').value||CENTRALE_ID;
+    state.transactions.push({...base,type:'reception',lieuId:rlieu,price});
   }
   else if(mode==='vente'){
     const lieuId=document.getElementById('f-vlieu').value;
@@ -627,12 +773,13 @@ function saveTx(){
       }
     }
     const day=todayDay(), time=nowTime();
-    const groupId = lines.length>1 ? 'g'+Date.now() : null;
+    const vendeurId=document.getElementById('f-vendeur').value||null;
+    const groupId='g'+Date.now();
     lines.forEach((l,i)=>{
       state.transactions.push({
         id:(Date.now()+i).toString(),
         prodId:l.prodId, qty:parseFloat(l.qty), price:parseFloat(l.price||0),
-        note, day, time, type:'vente', lieuId, groupId
+        note, day, time, type:'vente', lieuId, vendeurId, groupId
       });
     });
     cart=[]; renderCart();
@@ -667,7 +814,7 @@ function renderJournal(){
   document.getElementById('journal-dates').innerHTML=
     `<button class="fchip ${journalDate==='all'?'active':''}" onclick="setJDate('all')">Tout</button>`+
     days.map(d=>`<button class="fchip ${journalDate===d?'active':''}" onclick="setJDate('${d}')">${d}</button>`).join('');
-  const types=[['all','Tout'],['vente','Ventes'],['reception','Réceptions'],['transfert','Transferts']];
+  const types=[['all','Tout'],['vente','Ventes'],['reception','Réceptions'],['transfert','Transferts'],['ajustement','Ajustements']];
   document.getElementById('journal-types').innerHTML=
     types.map(([v,l])=>`<button class="fchip ${journalType===v?'active':''}" onclick="setJType('${v}')">${l}</button>`).join('');
 
@@ -690,6 +837,9 @@ function renderJournal(){
       <div><div class="mlabel">Investi</div><div class="mval cr" style="font-size:15px">−${fmtM(inv)} €</div></div>
     </div>`;
 
+  const rb=document.getElementById('report-btn');
+  if(rb) rb.textContent = journalDate==='all' ? '📄 Générer le rapport (tout)' : '📄 Générer le rapport du '+journalDate;
+
   const el=document.getElementById('journal-list');
   if(!txs.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
 
@@ -707,12 +857,67 @@ function renderJournal(){
     html+=`<div class="day-header"><span class="day-date">${day}</span>`+
       (dRev>0?`<span class="day-summary cg">+${fmtM(dRev)} €</span>`:`<span class="day-summary" style="color:var(--faint)">—</span>`)+
       `</div><div class="day-sep"></div>`;
-    html+=list.map(t=>txHTML(t,true)).join('');
+    html+=renderTxList(list);
   });
   el.innerHTML=html;
 }
 function setJDate(d){ journalDate=d; renderJournal(); }
 function setJType(t){ journalType=t; renderJournal(); }
+
+/* ── Regroupement des ventes ── */
+let openGroups = new Set();
+function toggleGroup(gid){
+  if(openGroups.has(gid)) openGroups.delete(gid); else openGroups.add(gid);
+  renderJournal(); renderTxTab();
+}
+// Regroupe une liste de tx : les ventes d'un même groupId deviennent un seul item
+function groupTx(list){
+  const out=[], seen={};
+  list.forEach(t=>{
+    if(t.type==='vente' && t.groupId){
+      if(seen[t.groupId]!==undefined){ out[seen[t.groupId]].items.push(t); return; }
+      seen[t.groupId]=out.length;
+      out.push({grouped:true, groupId:t.groupId, items:[t], day:t.day, time:t.time,
+                lieuId:t.lieuId, vendeurId:t.vendeurId, note:t.note});
+    } else out.push({grouped:false, tx:t});
+  });
+  return out;
+}
+function groupHTML(g){
+  const tot=g.items.reduce((s,t)=>s+parseFloat(t.price||0),0);
+  const isOpen=openGroups.has(g.groupId);
+  const multi=g.items.length>1;
+  const label = multi ? `${g.items.length} produits` : (()=>{ const p=prodById(g.items[0].prodId); return p?`${p.abr} — ${p.nom}`:'?'; })();
+  const chev = multi ? `<svg class="txchev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>` : '';
+  const totQ = g.items.length===1 ? fmtQ(g.items[0].qty, (prodById(g.items[0].prodId)||{}).unit) : '';
+  const sub = multi ? `<div class="grp-sub">`+g.items.map(t=>{
+      const p=prodById(t.prodId);
+      return `<div class="grp-row">
+        <span class="gp"><b class="abr">${p?p.abr:'?'}</b> ${p?p.nom:''}</span>
+        <span class="gq">${fmtQ(t.qty,p?p.unit:'')}</span>
+        <span class="gv">${fmtM(t.price||0)} €</span>
+        <button class="ibtn edt" style="width:24px;height:24px" onclick="event.stopPropagation();openEditTx('${t.id}')"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      </div>`;
+    }).join('')+`</div>` : '';
+  const editBtn = multi ? '' : `<button class="ibtn edt" style="margin-top:4px;margin-left:auto" onclick="event.stopPropagation();openEditTx('${g.items[0].id}')"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`;
+  const vend = g.vendeurId ? `<span class="txvend">${vendName(g.vendeurId)}</span>` : '';
+  return `<div class="txitem ${isOpen?'open':''}" ${multi?`onclick="toggleGroup('${g.groupId}')" style="cursor:pointer"`:''}>
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="txpill pv">Vente</span><span class="txprod">${label}</span>${chev}</div>
+      <div class="txmeta">${g.day||''} ${g.time||''}${g.note?' · '+g.note:''}</div>
+      <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap"><span class="txlieu">${lieuName(g.lieuId)}</span>${vend}</div>
+      ${sub}
+    </div>
+    <div>
+      <div class="txamt" style="color:var(--green)">+${fmtM(tot)} €</div>
+      ${totQ?`<div class="txql">${totQ}</div>`:''}
+      ${editBtn}
+    </div>
+  </div>`;
+}
+function renderTxList(list){
+  return groupTx(list).map(g=> g.grouped ? groupHTML(g) : txHTML(g.tx,true)).join('');
+}
 
 function txHTML(tx,withEdit){
   const p=prodById(tx.prodId);
@@ -733,6 +938,20 @@ function txHTML(tx,withEdit){
     pill='<span class="txpill pt">Transfert</span>';
     lieuTag=`<span class="txlieu">${lieuName(tx.fromId)} → ${lieuName(tx.toId)}</span>`;
     amt=`<div class="txamt" style="color:var(--muted)">—</div>`;
+  }
+  if(tx.type==='ajustement'){
+    const d=parseFloat(tx.qty);
+    return `<div class="txitem">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="txpill pj">Ajustement</span><span class="txprod">${prodLabel}</span></div>
+        <div class="txmeta">${tx.day||''} ${tx.time||''}${tx.note?' · '+tx.note:''}</div>
+        <div style="margin-top:4px"><span class="txlieu">${lieuName(tx.lieuId)}</span></div>
+      </div>
+      <div>
+        <div class="txamt" style="color:${d>=0?'var(--green)':'var(--red)'}">${d>=0?'+':''}${fmtQ(d,p?p.unit:'')}</div>
+        ${withEdit?`<button class="ibtn del" style="margin-top:6px;margin-left:auto" onclick="deleteTxById('${tx.id}')"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>`:''}
+      </div>
+    </div>`;
   }
   const editBtn=withEdit?`<button class="ibtn edt" style="margin-top:4px;margin-left:auto" onclick="openEditTx('${tx.id}')"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`:'';
   return `<div class="txitem">
@@ -758,7 +977,13 @@ function renderStock(){
     const rows=state.lieux.map(l=>{
       const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
       const central=l.id===CENTRALE_ID;
-      return `<div class="lieu-row ${central?'central':''}"><span class="lieu-name ${central?'central':''}">${l.nom}</span><span class="lieu-qty">${fmtQ(q,p.unit)}</span></div>`;
+      return `<div class="lieu-row ${central?'central':''}">
+        <span class="lieu-name ${central?'central':''}">${l.nom}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="lieu-qty">${fmtQ(q,p.unit)}</span>
+          <button class="ibtn edt" style="width:26px;height:26px" title="Ajuster" onclick="event.stopPropagation();openAdj('${p.id}','${l.id}')">⚖</button>
+        </span>
+      </div>`;
     }).join('');
     return `<div class="stkcard ${isOpen?'open':''}">
       <div class="stkhead" onclick="toggleStock('${p.id}')">
@@ -786,13 +1011,16 @@ function setCfgTab(t){
   cfgTab=t;
   document.getElementById('cfg-tab-prod').classList.toggle('active',t==='prod');
   document.getElementById('cfg-tab-lieu').classList.toggle('active',t==='lieu');
+  document.getElementById('cfg-tab-vend').classList.toggle('active',t==='vend');
   document.getElementById('cfg-prod-view').style.display=t==='prod'?'block':'none';
   document.getElementById('cfg-lieu-view').style.display=t==='lieu'?'block':'none';
+  document.getElementById('cfg-vend-view').style.display=t==='vend'?'block':'none';
   updateHdr();
 }
 function fabAction(){
   if(curTab==='config'){
     if(cfgTab==='prod'){ editProdIdx=null; openProdSheet(); }
+    else if(cfgTab==='vend'){ editVendIdx=null; openVendSheet(); }
     else { editLieuIdx=null; openLieuSheet(); }
   } else { showTab('tx',document.querySelectorAll('.nb')[1]); setMode('vente'); }
 }
@@ -804,6 +1032,9 @@ function openEditTx(id){
   editTxId=id;
   buildProdSel('e-prod'); document.getElementById('e-prod').value=tx.prodId;
   buildLieuSel('e-vlieu',true);
+  const evs=document.getElementById('e-vendeur');
+  evs.innerHTML=state.vendeurs.length?state.vendeurs.map(v=>`<option value="${v.id}">${v.nom}</option>`).join(''):'<option value="">—</option>';
+  if(tx.vendeurId&&state.vendeurs.some(v=>v.id===tx.vendeurId)) evs.value=tx.vendeurId;
   buildLieuSel('e-from',true); buildLieuSel('e-to',true);
   if(tx.type==='vente'){ document.getElementById('e-vlieu').value=tx.lieuId; }
   if(tx.type==='transfert'){ document.getElementById('e-from').value=tx.fromId; document.getElementById('e-to').value=tx.toId; }
@@ -824,6 +1055,7 @@ function setEditMode(m){
   document.getElementById('e-rbtn').className='vtbtn'+(m==='reception'?' active-r':'');
   document.getElementById('e-tbtn').className='vtbtn'+(m==='transfert'?' active-t':'');
   document.getElementById('e-wrap-vlieu').style.display=(m==='vente')?'block':'none';
+  document.getElementById('e-wrap-vendeur').style.display=(m==='vente')?'block':'none';
   document.getElementById('e-wrap-transfer').style.display=(m==='transfert')?'grid':'none';
   document.getElementById('e-wrap-price').style.display=(m==='transfert')?'none':'block';
   const plabels={vente:'Prix de vente (€)',reception:"Prix d'achat (€/u)"};
@@ -843,13 +1075,14 @@ function saveEditTx(){
   const p=prodById(prodId);
   if(!prodId||isNaN(qty)||qty<=0){ alert('Quantité invalide.'); return; }
   const updated={...tx,prodId,qty,note,type:editMode};
-  delete updated.lieuId; delete updated.fromId; delete updated.toId; delete updated.price;
+  delete updated.lieuId; delete updated.fromId; delete updated.toId; delete updated.price; delete updated.vendeurId;
 
   if(editMode==='reception'){
     updated.lieuId=CENTRALE_ID;
     updated.price=parseFloat(document.getElementById('e-price').value||0);
   } else if(editMode==='vente'){
     updated.lieuId=document.getElementById('e-vlieu').value;
+    updated.vendeurId=document.getElementById('e-vendeur').value||null;
     updated.price=parseFloat(document.getElementById('e-price').value||0);
     const s=computeStockExcluding(editTxId);
     const avail=(s[prodId]&&s[prodId][updated.lieuId])||0;
@@ -865,6 +1098,11 @@ function saveEditTx(){
   const idx=state.transactions.findIndex(t=>t.id===editTxId);
   state.transactions[idx]=updated;
   editTxId=null; save(); closeEditTx(); render();
+}
+function deleteTxById(id){
+  if(!confirm('Supprimer cette transaction ?')) return;
+  state.transactions=state.transactions.filter(t=>t.id!==id);
+  save(); render();
 }
 function deleteTx(){
   if(!editTxId) return;
@@ -969,6 +1207,169 @@ function saveLieu(){
   save(); closeLieuSheet(); editLieuIdx=null; render();
 }
 
+/* ── Rapport partageable ── */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function exportReport(){
+  const periode = journalDate==='all' ? 'Toutes périodes' : journalDate;
+  const txs = state.transactions.filter(t=> journalDate==='all' || t.day===journalDate);
+  if(!txs.length){ alert('Aucune transaction sur cette période.'); return; }
+
+  let rev=0,cogs=0,inv=0;
+  txs.forEach(t=>{
+    if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*prodPA(t.prodId); }
+    if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
+  });
+  const marge=rev-cogs;
+
+  // Détail par produit (ventes)
+  const parProd={};
+  txs.filter(t=>t.type==='vente').forEach(t=>{
+    const k=t.prodId;
+    if(!parProd[k]) parProd[k]={qty:0,rev:0,cogs:0,n:0};
+    parProd[k].qty+=parseFloat(t.qty);
+    parProd[k].rev+=parseFloat(t.price||0);
+    parProd[k].cogs+=parseFloat(t.qty)*prodPA(t.prodId);
+    parProd[k].n++;
+  });
+  // Récap par vendeur
+  const parVend={};
+  txs.filter(t=>t.type==='vente').forEach(t=>{
+    const k=t.vendeurId||'_none';
+    if(!parVend[k]) parVend[k]={rev:0,cogs:0,n:new Set()};
+    parVend[k].rev+=parseFloat(t.price||0);
+    parVend[k].cogs+=parseFloat(t.qty)*prodPA(t.prodId);
+    parVend[k].n.add(t.groupId||t.id);
+  });
+  const vendRows=Object.keys(parVend).map(vid=>{
+    const d=parVend[vid], m=d.rev-d.cogs;
+    const nom = vid==='_none' ? '—' : vendName(vid);
+    return `<tr><td><b>${esc(nom)}</b></td>
+      <td class="n">${d.n.size}</td>
+      <td class="n g">${esc(fmtM(d.rev))} €</td>
+      <td class="n ${m>=0?'g':'r'}">${m>=0?'+':''}${esc(fmtM(m))} €</td></tr>`;
+  }).join('');
+
+  const prodRows=Object.keys(parProd).map(pid=>{
+    const p=prodById(pid), d=parProd[pid], m=d.rev-d.cogs;
+    return `<tr><td><b>${esc(p?p.abr:'?')}</b> ${esc(p?p.nom:'')}</td>
+      <td class="n">${esc(fmtQ(d.qty,p?p.unit:''))}</td>
+      <td class="n">${d.n}</td>
+      <td class="n g">${esc(fmtM(d.rev))} €</td>
+      <td class="n ${m>=0?'g':'r'}">${m>=0?'+':''}${esc(fmtM(m))} €</td></tr>`;
+  }).join('');
+
+  // État du stock
+  const stocks=computeStock();
+  const stockRows=state.produits.map(p=>{
+    const tot=stocks[p.id]?stocks[p.id]._total:0;
+    const parLieu=state.lieux.map(l=>{
+      const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
+      return q>0?`${esc(l.nom)} : ${esc(fmtQ(q,p.unit))}`:null;
+    }).filter(Boolean).join(' · ') || '—';
+    return `<tr><td><b>${esc(p.abr)}</b> ${esc(p.nom)}</td>
+      <td class="n ${tot<=0?'r':''}">${esc(fmtQ(tot,p.unit))}</td>
+      <td class="sm">${parLieu}</td>
+      <td class="n">${esc(fmtM(tot*parseFloat(p.pa||0)))} €</td></tr>`;
+  }).join('');
+
+  const valStock=state.produits.reduce((s,p)=>s+(stocks[p.id]?stocks[p.id]._total:0)*parseFloat(p.pa||0),0);
+
+  // Détail des transactions
+  const grouped=groupTx([...txs].reverse());
+  const txRows=grouped.map(g=>{
+    if(g.grouped){
+      const tot=g.items.reduce((a,t)=>a+parseFloat(t.price||0),0);
+      const detail=g.items.map(t=>{
+        const p=prodById(t.prodId);
+        return `${esc(p?p.abr:'?')} ${esc(fmtQ(t.qty,p?p.unit:''))} — ${esc(fmtM(t.price||0))} €`;
+      }).join('<br>');
+      const nom=g.items.length>1?`${g.items.length} produits`:(()=>{const p=prodById(g.items[0].prodId);return esc(p?p.abr+' '+p.nom:'?')})();
+      return `<tr><td class="sm">${esc(g.day||'')} ${esc(g.time||'')}</td>
+        <td><span class="pill pv">Vente</span></td>
+        <td><b>${nom}</b><div class="sm m">${detail}</div>${g.note?'<div class="sm m">'+esc(g.note)+'</div>':''}</td>
+        <td class="sm">${esc(lieuName(g.lieuId))}${g.vendeurId?'<div class="sm y">'+esc(vendName(g.vendeurId))+'</div>':''}</td>
+        <td class="n sm">—</td>
+        <td class="n"><span class="g">+${esc(fmtM(tot))} €</span></td></tr>`;
+    }
+    const t=g.tx, p=prodById(t.prodId);
+    let type,lieu,mont;
+    if(t.type==='reception'){ type='<span class="pill pr">Réception</span>'; lieu='→ '+esc(lieuName(t.lieuId||CENTRALE_ID)); mont=`<span class="r">−${esc(fmtM(parseFloat(t.qty)*parseFloat(t.price||0)))} €</span>`; }
+    else if(t.type==='ajustement'){ const d=parseFloat(t.qty); type='<span class="pill pj">Ajustement</span>'; lieu=esc(lieuName(t.lieuId)); mont=`<span class="${d>=0?'g':'r'}">${d>=0?'+':''}${esc(fmtQ(d,p?p.unit:''))}</span>`; }
+    else { type='<span class="pill pt">Transfert</span>'; lieu=esc(lieuName(t.fromId))+' → '+esc(lieuName(t.toId)); mont='<span class="m">—</span>'; }
+    return `<tr><td class="sm">${esc(t.day||'')} ${esc(t.time||'')}</td>
+      <td>${type}</td>
+      <td><b>${esc(p?p.abr:'?')}</b> ${esc(p?p.nom:'')}${t.note?'<div class="sm m">'+esc(t.note)+'</div>':''}</td>
+      <td class="sm">${lieu}</td>
+      <td class="n">${esc(fmtQ(t.qty,p?p.unit:''))}</td>
+      <td class="n">${mont}</td></tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Rapport ${esc(periode)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f0f0f;color:#f0f0f0;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;padding:20px;max-width:900px;margin:0 auto}
+h1{font-size:20px;font-weight:600;margin-bottom:2px}
+.sub{color:#888;font-size:13px;margin-bottom:20px}
+h2{font-size:15px;font-weight:600;color:#e8c84a;margin:24px 0 10px;padding-bottom:6px;border-bottom:1px solid rgba(232,200,74,.25)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:8px}
+.card{background:#1a1a1a;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px}
+.card .l{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.card .v{font-size:19px;font-weight:600;font-family:ui-monospace,monospace}
+table{width:100%;border-collapse:collapse;background:#1a1a1a;border-radius:10px;overflow:hidden;font-size:13px}
+th{background:#242424;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:500;text-align:left;padding:9px 12px}
+td{padding:9px 12px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top}
+td.n{text-align:right;font-family:ui-monospace,monospace;white-space:nowrap}
+.sm{font-size:12px;color:#aaa}
+.g{color:#4ade80}.r{color:#f87171}.m{color:#888}.y{color:#e8c84a}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;white-space:nowrap}
+.pv{background:rgba(74,222,128,.15);color:#4ade80}
+.pr{background:rgba(248,113,113,.15);color:#f87171}
+.pt{background:rgba(192,132,252,.15);color:#c084fc}
+.pj{background:rgba(96,165,250,.15);color:#60a5fa}
+.foot{margin-top:24px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);color:#666;font-size:12px}
+@media(max-width:600px){body{padding:12px}td,th{padding:8px 9px}}
+</style></head><body>
+<h1>📦 Rapport d'activité</h1>
+<div class="sub">${esc(periode)} · généré le ${esc(todayDay())} à ${esc(nowTime())}</div>
+
+<div class="cards">
+  <div class="card"><div class="l">Ventes</div><div class="v g">+${esc(fmtM(rev))} €</div></div>
+  <div class="card"><div class="l">Marge réalisée</div><div class="v ${marge>=0?'g':'r'}">${marge>=0?'+':''}${esc(fmtM(marge))} €</div></div>
+  <div class="card"><div class="l">Investi (achats)</div><div class="v r">−${esc(fmtM(inv))} €</div></div>
+  <div class="card"><div class="l">Valeur du stock</div><div class="v y">${esc(fmtM(valStock))} €</div></div>
+</div>
+
+${vendRows?`<h2>Ventes par vendeur</h2>
+<table><thead><tr><th>Vendeur</th><th style="text-align:right">Nb ventes</th><th style="text-align:right">Revenu</th><th style="text-align:right">Marge</th></tr></thead>
+<tbody>${vendRows}</tbody></table>`:''}
+
+${prodRows?`<h2>Ventes par produit</h2>
+<table><thead><tr><th>Produit</th><th style="text-align:right">Qté vendue</th><th style="text-align:right">Nb</th><th style="text-align:right">Revenu</th><th style="text-align:right">Marge</th></tr></thead>
+<tbody>${prodRows}</tbody></table>`:''}
+
+<h2>État du stock</h2>
+<table><thead><tr><th>Produit</th><th style="text-align:right">Total</th><th>Répartition</th><th style="text-align:right">Valeur</th></tr></thead>
+<tbody>${stockRows}</tbody></table>
+
+<h2>Détail des transactions (${grouped.length})</h2>
+<table><thead><tr><th>Date</th><th>Type</th><th>Produit</th><th>Lieu</th><th style="text-align:right">Qté</th><th style="text-align:right">Montant</th></tr></thead>
+<tbody>${txRows}</tbody></table>
+
+<div class="foot">Marge calculée au prix d'achat de référence de chaque produit. Bénéfice centralisé, tous lieux confondus.</div>
+</body></html>`;
+
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const slug = journalDate==='all' ? 'global' : journalDate.replace(/\//g,'-');
+  a.href=url; a.download=`rapport-${slug}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /* ── Export / Import JSON ── */
 function exportJSON(){
   const data=JSON.stringify(state,null,2);
@@ -991,6 +1392,7 @@ function importJSON(ev){
       if(!confirm('Remplacer toutes les données actuelles par ce fichier ?')){ ev.target.value=''; return; }
       state.produits=s.produits||[];
       state.lieux=s.lieux||[];
+      state.vendeurs=s.vendeurs||[];
       state.transactions=s.transactions||[];
       ensureCentrale();
       save(); render();
