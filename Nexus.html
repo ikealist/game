@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#0f0f0f"/>
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex"/>
+<meta name="googlebot" content="noindex, nofollow"/>
+<meta name="referrer" content="no-referrer"/>
 <title>Stock Dépôts</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap');
@@ -88,6 +91,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .ibtn svg{width:14px;height:14px;stroke-width:2;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 .ibtn.edt{color:var(--muted)}.ibtn.del{color:var(--red);border-color:rgba(248,113,113,.25)}
 .central-tag{font-size:10px;background:var(--accent-dim);color:var(--accent);padding:2px 8px;border-radius:99px;font-weight:600}
+.arch-tag{font-size:10px;background:rgba(255,255,255,.06);color:var(--muted);padding:2px 8px;border-radius:99px;font-weight:600}
+.pitem.archived{opacity:.62}
+.ibtn.arc{color:var(--amber);border-color:rgba(251,146,60,.28)}
+.ibtn.res{color:var(--green);border-color:rgba(74,222,128,.28)}
+.arch-head{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px}
+.arch-head .seclabel{margin:0}
+.arch-toggle{background:none;border:.5px solid var(--border2);color:var(--muted);font-family:inherit;font-size:11px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer}
+.arch-toggle.on{color:var(--accent);border-color:rgba(232,200,74,.35)}
 /* action form */
 .vform{background:var(--bg2);border:.5px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px}
 .vtoggle{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px}
@@ -443,30 +454,36 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <script>
 const DB = 'stockdepots_v2';
 const CENTRALE_ID = 'centrale';
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 
 /* Normalise n'importe quel ancien format vers le format courant */
 function migrateState(s){
   const out={produits:[],lieux:[],vendeurs:[],transactions:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
   const UNITS=['g','kg','mg'];
 
+  /* v8 : archivage. `archived` est optionnel — absent vaut actif.
+     On ne le pose que s'il est vrai, pour ne pas alourdir l'export. */
+  const arch = e => (e.archived===true||e.archived==='true') ? {archived:true} : {};
+
   out.produits=(s.produits||[]).map(p=>({
     id:String(p.id),
     abr:p.abr||'?',
     nom:p.nom||p.name||'Sans nom',
     pa:parseFloat(p.pa)||0,
-    unit:UNITS.includes(p.unit)?p.unit:'g'
+    unit:UNITS.includes(p.unit)?p.unit:'g',
+    ...arch(p)
   }));
 
   out.lieux=(s.lieux||[]).map(l=>({
     id:String(l.id),
     nom:l.nom||l.name||'Sans nom',
-    ...(l.id===CENTRALE_ID?{central:true}:{})
+    ...(l.id===CENTRALE_ID?{central:true}:arch(l))
   }));
 
   out.vendeurs=(s.vendeurs||[]).map(v=>({
     id:String(v.id),
-    nom:v.nom||v.name||'Sans nom'
+    nom:v.nom||v.name||'Sans nom',
+    ...arch(v)
   }));
 
   out.transactions=(s.transactions||[]).map(t=>{
@@ -502,6 +519,7 @@ let cfgTab = 'prod';
 let journalDate = 'all';
 let journalType = 'all';
 let openStockIds = new Set();
+let showArchived = false;
 
 /* ── Storage ── */
 function load() {
@@ -614,17 +632,39 @@ function lieuName(id){ const l=state.lieux.find(x=>x.id===id); return l?l.nom:'?
 function prodById(id){ return state.produits.find(p=>p.id===id); }
 function prodPA(id){ const p=prodById(id); return p?parseFloat(p.pa||0):0; }
 
+/* ── Archivage (v8) ──
+   Un élément archivé sort des listes déroulantes et des compteurs, mais reste
+   dans `state` : son nom continue de résoudre dans le journal et les rapports,
+   et il pèse toujours dans les calculs financiers. Archiver n'est PAS supprimer. */
+function isArchived(e){ return !!(e&&e.archived); }
+function activeProduits(){ return state.produits.filter(p=>!isArchived(p)); }
+function activeLieux(){ return state.lieux.filter(l=>!isArchived(l)); }
+function activeVendeurs(){ return state.vendeurs.filter(v=>!isArchived(v)); }
+function archivedProduits(){ return state.produits.filter(isArchived); }
+function archivedLieux(){ return state.lieux.filter(isArchived); }
+function archivedVendeurs(){ return state.vendeurs.filter(isArchived); }
+/* Un produit archivé qui garde du stock reste affiché : cacher du stock serait pire que le bug d'origine. */
+function prodVisibleStock(p,stocks){ return !isArchived(p) || Math.abs((stocks[p.id]?stocks[p.id]._total:0))>0.0000001; }
+function lieuStockTotal(lid,stocks){
+  return state.produits.reduce((a,p)=>a+((stocks[p.id]&&stocks[p.id][lid])||0),0);
+}
+function lieuVisible(l,stocks){ return !isArchived(l) || Math.abs(lieuStockTotal(l.id,stocks))>0.0000001; }
+function txCountProd(id){ return state.transactions.filter(t=>t.prodId===id).length; }
+function txCountLieu(id){ return state.transactions.filter(t=>t.lieuId===id||t.fromId===id||t.toId===id).length; }
+function txCountVend(id){ return state.transactions.filter(t=>t.vendeurId===id).length; }
+
 /* ── Render ── */
 function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); renderVendeurs(); updateHdr(); }
 
 function updateHdr(){
-  const nonCentral = state.lieux.filter(l=>l.id!==CENTRALE_ID).length;
+  const nbProd = activeProduits().length;
+  const nonCentral = activeLieux().filter(l=>l.id!==CENTRALE_ID).length;
   const tabs={tableau:'📦 Stock Dépôts',tx:'🔄 Actions',journal:'📅 Journal',stock:'📦 Stock',config:'⚙️ Configuration'};
   const subs={
-    tableau:`${state.produits.length} produits · ${nonCentral} lieux · ${state.transactions.length} tx`,
+    tableau:`${nbProd} produits · ${nonCentral} lieux · ${state.transactions.length} tx`,
     tx:``,journal:`${state.transactions.length} transactions`,
-    stock:`${state.produits.length} produits`,
-    config:cfgTab==='prod'?`${state.produits.length} produits`:`${nonCentral} lieux (+ Centrale)`
+    stock:`${nbProd} produits`,
+    config:cfgTab==='prod'?`${nbProd} produits`:`${nonCentral} lieux (+ Centrale)`
   };
   document.getElementById('htitle').textContent=tabs[curTab]||'📦 Stock Dépôts';
   document.getElementById('hsub').textContent=subs[curTab]||'';
@@ -649,7 +689,8 @@ function renderMetrics(){
   const marge=revenu-cogs-pertes;
   const treso=parseFloat(state.tresorerieInitiale||0)+revenu-investi;
   const patrimoine=treso+valStock;
-  const zeros=state.produits.filter(p=>(stocks[p.id]?stocks[p.id]._total:0)<=0).length;
+  /* une rupture ne concerne que les produits encore actifs */
+  const zeros=activeProduits().filter(p=>(stocks[p.id]?stocks[p.id]._total:0)<=0).length;
   document.getElementById('metrics').innerHTML=`
     <div class="mcard wide"><div class="mlabel">Trésorerie actuelle</div><div class="mval ${treso>=0?'cg':'cr'}">${fmtM(treso)} €</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + ventes − achats</div></div>
@@ -662,8 +703,9 @@ function renderMetrics(){
     <div class="mcard wide"><div class="mlabel">Ruptures</div><div class="mval ${zeros>0?'cr':'cg'}">${zeros} produit${zeros!==1?'s':''}</div></div>
   `;
   const lieuEl=document.getElementById('lieu-metrics');
-  if(!state.produits.length){ lieuEl.innerHTML='<div class="empty"><div class="ico">📦</div>Aucun produit défini.</div>'; return; }
-  lieuEl.innerHTML = state.lieux.map(l=>{
+  if(!activeProduits().length){ lieuEl.innerHTML='<div class="empty"><div class="ico">📦</div>Aucun produit défini.</div>'; return; }
+  /* un lieu archivé disparaît, sauf s'il lui reste du stock à ne pas perdre de vue */
+  lieuEl.innerHTML = state.lieux.filter(l=>lieuVisible(l,stocks)).map(l=>{
     let val=0;
     state.produits.forEach(p=>{
       const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
@@ -672,42 +714,56 @@ function renderMetrics(){
       val+=q*cmp;
     });
     const tag=l.id===CENTRALE_ID?'<span class="central-tag">Centrale</span>':l.nom;
-    return `<div class="pitem"><div class="pinfo"><div class="pnom">${tag}</div></div><div style="font-family:'DM Mono',monospace;font-weight:600">${fmtM(val)} €</div></div>`;
+    const badge=isArchived(l)?' <span class="arch-tag">archivé</span>':'';
+    return `<div class="pitem"><div class="pinfo"><div class="pnom">${tag}${badge}</div></div><div style="font-family:'DM Mono',monospace;font-weight:600">${fmtM(val)} €</div></div>`;
   }).join('');
 }
 
-function buildProdSel(id){ document.getElementById(id).innerHTML=state.produits.map(p=>`<option value="${p.id}">${p.abr} — ${p.nom}</option>`).join(''); }
+/* Réinjecte dans un <select> l'élément archivé porté par une transaction
+   qu'on est en train de modifier : sans ça l'affectation échouerait en
+   silence et la transaction changerait de produit / de lieu à l'enregistrement. */
+function ensureOpt(selId,val,ent,label){
+  const sel=document.getElementById(selId);
+  if(!sel||!val||!ent) return;
+  if([...sel.options].some(o=>o.value===val)) return;
+  const o=document.createElement('option');
+  o.value=val; o.textContent=label(ent)+' (archivé)';
+  sel.appendChild(o);
+}
+function buildProdSel(id){ document.getElementById(id).innerHTML=activeProduits().map(p=>`<option value="${p.id}">${p.abr} — ${p.nom}</option>`).join(''); }
 function buildLieuSel(id,includeCentrale){
-  const list = includeCentrale ? state.lieux : state.lieux.filter(l=>l.id!==CENTRALE_ID);
+  const list = includeCentrale ? activeLieux() : activeLieux().filter(l=>l.id!==CENTRALE_ID);
   document.getElementById(id).innerHTML=list.map(l=>`<option value="${l.id}">${l.nom}</option>`).join('');
 }
 
 /* ── Actions tab ── */
 function renderTxTab(){
-  if(state.produits.length){
+  const actL=activeLieux(), actV=activeVendeurs();
+  if(activeProduits().length){
     const prev=document.getElementById('f-prod').value;
     buildProdSel('f-prod');
-    if(prev&&prodById(prev)) document.getElementById('f-prod').value=prev;
+    const pp=prodById(prev);
+    if(prev&&pp&&!isArchived(pp)) document.getElementById('f-prod').value=prev;
   }
   const prevLieu=document.getElementById('f-vlieu').value;
   buildLieuSel('f-vlieu',true);
-  if(prevLieu&&state.lieux.some(l=>l.id===prevLieu)) document.getElementById('f-vlieu').value=prevLieu;
+  if(prevLieu&&actL.some(l=>l.id===prevLieu)) document.getElementById('f-vlieu').value=prevLieu;
   const prevR=document.getElementById('f-rlieu').value;
   buildLieuSel('f-rlieu',true);
-  if(prevR&&state.lieux.some(l=>l.id===prevR)) document.getElementById('f-rlieu').value=prevR;
+  if(prevR&&actL.some(l=>l.id===prevR)) document.getElementById('f-rlieu').value=prevR;
   const prevJ=document.getElementById('f-jlieu').value;
   buildLieuSel('f-jlieu',true);
-  if(prevJ&&state.lieux.some(l=>l.id===prevJ)) document.getElementById('f-jlieu').value=prevJ;
+  if(prevJ&&actL.some(l=>l.id===prevJ)) document.getElementById('f-jlieu').value=prevJ;
   const vs=document.getElementById('f-vendeur');
   const prevV=vs.value;
-  vs.innerHTML=state.vendeurs.length
-    ? state.vendeurs.map(v=>`<option value="${v.id}">${v.nom}</option>`).join('')
+  vs.innerHTML=actV.length
+    ? actV.map(v=>`<option value="${v.id}">${v.nom}</option>`).join('')
     : '<option value="">— aucun vendeur défini —</option>';
-  if(prevV&&state.vendeurs.some(v=>v.id===prevV)) vs.value=prevV;
+  if(prevV&&actV.some(v=>v.id===prevV)) vs.value=prevV;
   buildLieuSel('f-from',true);
   buildLieuSel('f-to',true);
   document.getElementById('f-from').value=CENTRALE_ID;
-  const firstNon=state.lieux.find(l=>l.id!==CENTRALE_ID);
+  const firstNon=actL.find(l=>l.id!==CENTRALE_ID);
   if(firstNon) document.getElementById('f-to').value=firstNon.id;
   prefill();
   if(mode==='vente') renderCart();
@@ -722,8 +778,9 @@ let cart = [];
 let cartSeq = 0;
 
 function addCartLine(){
-  if(!state.produits.length) return;
-  cart.push({lid:'c'+(++cartSeq), prodId:state.produits[0].id, qty:'', price:''});
+  const act=activeProduits();
+  if(!act.length) return;
+  cart.push({lid:'c'+(++cartSeq), prodId:act[0].id, qty:'', price:''});
   renderCart();
 }
 function removeCartLine(lid){
@@ -743,15 +800,18 @@ function updateCartTotal(){
 function renderCart(){
   const el=document.getElementById('cart-lines');
   if(!el) return;
-  if(!state.produits.length){ el.innerHTML=''; return; }
-  if(!cart.length) cart=[{lid:'c'+(++cartSeq),prodId:state.produits[0].id,qty:'',price:''}];
+  const act=activeProduits();
+  if(!act.length){ el.innerHTML=''; return; }
+  if(!cart.length) cart=[{lid:'c'+(++cartSeq),prodId:act[0].id,qty:'',price:''}];
+  /* un produit archivé entre-temps ne doit plus rester sélectionné dans le panier */
+  cart.forEach(l=>{ const p=prodById(l.prodId); if(!p||isArchived(p)) l.prodId=act[0].id; });
   const lieuId=document.getElementById('f-vlieu').value;
   const stocks=computeStock();
   el.innerHTML=cart.map(l=>{
     const p=prodById(l.prodId);
     const unit=p?p.unit:'';
     const avail=(stocks[l.prodId]&&stocks[l.prodId][lieuId])||0;
-    const opts=state.produits.map(pr=>`<option value="${pr.id}"${pr.id===l.prodId?' selected':''}>${pr.abr} — ${pr.nom}</option>`).join('');
+    const opts=act.map(pr=>`<option value="${pr.id}"${pr.id===l.prodId?' selected':''}>${pr.abr} — ${pr.nom}</option>`).join('');
     const rm=cart.length>1?`<button class="cart-rm" onclick="removeCartLine('${l.lid}')" aria-label="Retirer">×</button>`:'';
     return `<div class="cart-line">
       <div class="cart-line-top">
@@ -777,17 +837,34 @@ function renderCart(){
 let editVendIdx = null;
 function vendName(id){ const v=state.vendeurs.find(x=>x.id===id); return v?v.nom:'—'; }
 function renderVendeurs(){
-  const c=document.getElementById('vctr'); if(c) c.textContent=`${state.vendeurs.length} vendeurs`;
+  const act=[], arc=[];
+  state.vendeurs.forEach((v,i)=>{ (isArchived(v)?arc:act).push({v,i}); });
+  const c=document.getElementById('vctr'); if(c) c.textContent=`${act.length} vendeurs`;
   const el=document.getElementById('vend-list'); if(!el) return;
   if(!state.vendeurs.length){el.innerHTML='<div class="empty"><div class="ico">👤</div>Aucun vendeur.</div>';return;}
-  el.innerHTML=state.vendeurs.map((v,i)=>`
-    <div class="pitem">
-      <div class="pinfo"><div class="pnom">${v.nom}</div></div>
+  const row=({v,i})=>{
+    const a=isArchived(v);
+    return `<div class="pitem${a?' archived':''}">
+      <div class="pinfo"><div class="pnom">${v.nom}${a?' <span class="arch-tag">archivé</span>':''}</div></div>
       <div class="pbtns">
-        <button class="ibtn edt" onclick="editVend(${i})"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-        <button class="ibtn del" onclick="deleteVend(${i})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+        ${a?`<button class="ibtn res" title="Restaurer" onclick="restoreVend(${i})">${ICO_REST}</button>`
+           :`<button class="ibtn edt" title="Modifier" onclick="editVend(${i})">${ICO_EDIT}</button>
+             <button class="ibtn arc" title="Archiver" onclick="archiveVend(${i})">${ICO_ARCH}</button>`}
+        <button class="ibtn del" title="Supprimer" onclick="deleteVend(${i})">${ICO_TRASH}</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  };
+  el.innerHTML = (act.length ? act.map(row).join('') : '<div class="empty"><div class="ico">👤</div>Aucun vendeur actif.</div>')
+    + (arc.length ? archHead(arc.length)+(showArchived?arc.map(row).join(''):'') : '');
+}
+function archiveVend(i){
+  const v=state.vendeurs[i];
+  if(!confirm(`Archiver "${v.nom}" ? Il disparaîtra du sélecteur de vente, ses ventes passées restent à son nom.`)) return;
+  state.vendeurs[i]={...v,archived:true}; save(); render();
+}
+function restoreVend(i){
+  state.vendeurs[i]={...state.vendeurs[i]}; delete state.vendeurs[i].archived;
+  save(); render();
 }
 function openVendSheet(){
   document.getElementById('vend-sheet-title').textContent=editVendIdx===null?'Nouveau vendeur':'Modifier le vendeur';
@@ -798,8 +875,12 @@ function closeVendSheet(e){ if(!e||e.target===document.getElementById('vend-bg')
 function editVend(i){ editVendIdx=i; document.getElementById('vm-nom').value=state.vendeurs[i].nom; openVendSheet(); }
 function deleteVend(i){
   const v=state.vendeurs[i];
-  const hasTx=state.transactions.some(t=>t.vendeurId===v.id);
-  if(!confirm(hasTx?`"${v.nom}" a des ventes liées. Supprimer quand même ?`:`Supprimer "${v.nom}" ?`)) return;
+  const n=txCountVend(v.id);
+  if(n){
+    if(!confirm(`"${v.nom}" a ${n} vente${n>1?'s':''} à son nom : le supprimer les rendrait anonymes.\n\nOK pour l'archiver à la place ?`)) return;
+    state.vendeurs[i]={...v,archived:true}; save(); render(); return;
+  }
+  if(!confirm(`Supprimer "${v.nom}" ? Il n'a aucune vente, la suppression est définitive.`)) return;
   state.vendeurs.splice(i,1); save(); render();
 }
 function saveVend(){
@@ -913,7 +994,7 @@ function updateTotalPreview(){
 document.addEventListener('input',e=>{ if(e.target.id==='f-qty'||e.target.id==='f-price'){ updateTotalPreview(); if(mode==='ajustement') jPreview(); } });
 
 function saveTx(){
-  if(!state.produits.length){ alert("Ajoute d'abord un produit dans Config."); return; }
+  if(!activeProduits().length){ alert("Ajoute d'abord un produit dans Config."); return; }
   const prodId=document.getElementById('f-prod').value;
   const qty=parseFloat(document.getElementById('f-qty').value);
   const note=document.getElementById('f-note').value.trim();
@@ -1166,17 +1247,20 @@ function renderStock(){
   const stocks=computeStock();
   const cst=cmpState();
   const el=document.getElementById('stock-list');
-  if(!state.produits.length){el.innerHTML='<div class="empty"><div class="ico">📦</div>Aucun produit défini. Va dans Config.</div>';return;}
-  el.innerHTML=state.produits.map(p=>{
+  /* les produits archivés ne s'affichent que s'il leur reste du stock */
+  const vis=state.produits.filter(p=>prodVisibleStock(p,stocks));
+  if(!vis.length){el.innerHTML='<div class="empty"><div class="ico">📦</div>Aucun produit défini. Va dans Config.</div>';return;}
+  el.innerHTML=vis.map(p=>{
     const total=stocks[p.id]?stocks[p.id]._total:0;
     const disp=fmtQ(total,p.unit);
     const badge=total<=0?`<span class="badge bzero">${disp}</span>`:`<span class="badge bok">${disp}</span>`;
     const isOpen=openStockIds.has(p.id);
-    const rows=state.lieux.map(l=>{
+    const rows=state.lieux.filter(l=>lieuVisible(l,stocks)).map(l=>{
       const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
       const central=l.id===CENTRALE_ID;
+      const lArch=isArchived(l)?' <span class="arch-tag">archivé</span>':'';
       return `<div class="lieu-row ${central?'central':''}">
-        <span class="lieu-name ${central?'central':''}">${l.nom}</span>
+        <span class="lieu-name ${central?'central':''}">${l.nom}${lArch}</span>
         <span style="display:flex;align-items:center;gap:8px">
           <span class="lieu-qty">${fmtQ(q,p.unit)}</span>
           <button class="ibtn edt" style="width:26px;height:26px" title="Ajuster" onclick="event.stopPropagation();openAdj('${p.id}','${l.id}')">⚖</button>
@@ -1186,7 +1270,7 @@ function renderStock(){
     return `<div class="stkcard ${isOpen?'open':''}">
       <div class="stkhead" onclick="toggleStock('${p.id}')">
         <div class="stkinfo">
-          <div class="pname"><span class="abr">${p.abr}</span> — ${p.nom}</div>
+          <div class="pname"><span class="abr">${p.abr}</span> — ${p.nom}${isArchived(p)?' <span class="arch-tag">archivé</span>':''}</div>
           <div class="stkprice">Coût moyen ${fmtM((cst[p.id]&&cst[p.id].qty>0)?cst[p.id].val/cst[p.id].qty:p.pa)} €/${p.unit}</div>
         </div>
         <div class="stkright">${badge}<svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
@@ -1228,12 +1312,22 @@ function openEditTx(id){
   const tx=state.transactions.find(t=>t.id===id);
   if(!tx) return;
   editTxId=id;
-  buildProdSel('e-prod'); document.getElementById('e-prod').value=tx.prodId;
+  buildProdSel('e-prod'); ensureOpt('e-prod',tx.prodId,prodById(tx.prodId),p=>`${p.abr} — ${p.nom}`);
+  document.getElementById('e-prod').value=tx.prodId;
   buildLieuSel('e-vlieu',true);
+  const av=activeVendeurs();
   const evs=document.getElementById('e-vendeur');
-  evs.innerHTML=state.vendeurs.length?state.vendeurs.map(v=>`<option value="${v.id}">${v.nom}</option>`).join(''):'<option value="">—</option>';
-  if(tx.vendeurId&&state.vendeurs.some(v=>v.id===tx.vendeurId)) evs.value=tx.vendeurId;
+  evs.innerHTML=av.length?av.map(v=>`<option value="${v.id}">${v.nom}</option>`).join(''):'<option value="">—</option>';
+  if(tx.vendeurId){
+    ensureOpt('e-vendeur',tx.vendeurId,state.vendeurs.find(v=>v.id===tx.vendeurId),v=>v.nom);
+    if([...evs.options].some(o=>o.value===tx.vendeurId)) evs.value=tx.vendeurId;
+  }
   buildLieuSel('e-from',true); buildLieuSel('e-to',true);
+  ['e-vlieu','e-from','e-to'].forEach(sel=>{
+    [tx.lieuId,tx.fromId,tx.toId].filter(Boolean).forEach(lid=>{
+      ensureOpt(sel,lid,state.lieux.find(l=>l.id===lid),l=>l.nom);
+    });
+  });
   if(tx.type==='vente'){ document.getElementById('e-vlieu').value=tx.lieuId; }
   if(tx.type==='transfert'){ document.getElementById('e-from').value=tx.fromId; document.getElementById('e-to').value=tx.toId; }
   document.getElementById('e-qty').value=tx.qty;
@@ -1309,26 +1403,66 @@ function deleteTx(){
   editTxId=null; save(); closeEditTx(); render();
 }
 
+/* ── Icônes partagées des listes de config ── */
+const ICO_EDIT='<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+const ICO_TRASH='<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+const ICO_ARCH='<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg>';
+const ICO_REST='<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>';
+
+/* En-tête de la section « Archivés », avec son bouton d'affichage */
+function archHead(n){
+  return `<div class="arch-head">
+    <div class="seclabel">Archivés (${n})</div>
+    <button class="arch-toggle${showArchived?' on':''}" onclick="toggleArchived()">${showArchived?'Masquer':'Afficher'}</button>
+  </div>`;
+}
+function toggleArchived(){ showArchived=!showArchived; renderProduits(); renderLieux(); renderVendeurs(); }
+
 /* ── Produits ── */
 function renderProduits(){
   const ti=document.getElementById('treso-init');
   if(ti && document.activeElement!==ti) ti.value=state.tresorerieInitiale||'';
   const cst=cmpState();
-  document.getElementById('pctr').textContent=`${state.produits.length} produits`;
+  const stocks=computeStock();
+  const act=[], arc=[];
+  state.produits.forEach((p,i)=>{ (isArchived(p)?arc:act).push({p,i}); });
+  document.getElementById('pctr').textContent=`${act.length} produits`;
   const el=document.getElementById('prod-list');
   if(!state.produits.length){el.innerHTML='<div class="empty"><div class="ico">⚙️</div>Aucun produit.</div>';return;}
-  el.innerHTML=state.produits.map((p,i)=>`
-    <div class="pitem">
+  const row=({p,i})=>{
+    const a=isArchived(p);
+    const reste=stocks[p.id]?stocks[p.id]._total:0;
+    const note=a&&Math.abs(reste)>0.0000001?` · reste ${fmtQ(reste,p.unit)} en stock`:'';
+    return `
+    <div class="pitem${a?' archived':''}">
       <div class="pinfo">
-        <div class="pabr">${p.abr}</div>
+        <div class="pabr">${p.abr}${a?' <span class="arch-tag">archivé</span>':''}</div>
         <div class="pnom">${p.nom} <span style="color:var(--muted);font-size:11px">[${p.unit}]</span></div>
-        <div class="pprix">Coût moyen ${fmtM((cst[p.id]&&cst[p.id].qty>0)?cst[p.id].val/cst[p.id].qty:p.pa)} €/${p.unit}</div>
+        <div class="pprix">Coût moyen ${fmtM((cst[p.id]&&cst[p.id].qty>0)?cst[p.id].val/cst[p.id].qty:p.pa)} €/${p.unit}${note}</div>
       </div>
       <div class="pbtns">
-        <button class="ibtn edt" onclick="editProd(${i})"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-        <button class="ibtn del" onclick="deleteProd(${i})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+        ${a?`<button class="ibtn res" title="Restaurer" onclick="restoreProd(${i})">${ICO_REST}</button>`
+           :`<button class="ibtn edt" title="Modifier" onclick="editProd(${i})">${ICO_EDIT}</button>
+             <button class="ibtn arc" title="Archiver" onclick="archiveProd(${i})">${ICO_ARCH}</button>`}
+        <button class="ibtn del" title="Supprimer" onclick="deleteProd(${i})">${ICO_TRASH}</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  };
+  el.innerHTML = (act.length ? act.map(row).join('') : '<div class="empty"><div class="ico">⚙️</div>Aucun produit actif.</div>')
+    + (arc.length ? archHead(arc.length)+(showArchived?arc.map(row).join(''):'') : '');
+}
+function archiveProd(i){
+  const p=state.produits[i];
+  const reste=(computeStock()[p.id]||{})._total||0;
+  const msg = Math.abs(reste)>0.0000001
+    ? `"${p.nom}" a encore ${fmtQ(reste,p.unit)} en stock. Il restera visible dans Stock tant qu'il n'est pas écoulé. Archiver quand même ?`
+    : `Archiver "${p.nom}" ? Il disparaîtra des listes de saisie, son historique est conservé.`;
+  if(!confirm(msg)) return;
+  state.produits[i]={...p,archived:true}; save(); render();
+}
+function restoreProd(i){
+  state.produits[i]={...state.produits[i]}; delete state.produits[i].archived;
+  save(); render();
 }
 function openProdSheet(){
   document.getElementById('prod-sheet-title').textContent=editProdIdx===null?'Nouveau produit':'Modifier le produit';
@@ -1349,10 +1483,16 @@ function editProd(i){
   document.getElementById('pm-unit').value=p.unit;
   openProdSheet();
 }
+/* Supprimer un produit qui a un historique laisserait des transactions
+   orphelines affichées « ? », sans retour arrière. On archive à la place. */
 function deleteProd(i){
   const p=state.produits[i];
-  const hasTx=state.transactions.some(tx=>tx.prodId===p.id);
-  if(!confirm(hasTx?`"${p.nom}" a des transactions. Supprimer quand même ?`:`Supprimer "${p.nom}" ?`)) return;
+  const n=txCountProd(p.id);
+  if(n){
+    if(!confirm(`"${p.nom}" a ${n} transaction${n>1?'s':''} dans l'historique : le supprimer les rendrait illisibles.\n\nOK pour l'archiver à la place ?`)) return;
+    state.produits[i]={...p,archived:true}; save(); render(); return;
+  }
+  if(!confirm(`Supprimer "${p.nom}" ? Il n'a aucune transaction, la suppression est définitive.`)) return;
   state.produits.splice(i,1); save(); render();
 }
 function saveProd(){
@@ -1369,20 +1509,48 @@ function saveProd(){
 
 /* ── Lieux ── */
 function renderLieux(){
-  const nonCentral=state.lieux.filter(l=>l.id!==CENTRALE_ID);
-  document.getElementById('lctr').textContent=`${nonCentral.length} lieux + Centrale`;
+  const stocks=computeStock();
+  const act=[], arc=[];
+  state.lieux.forEach((l,i)=>{
+    if(l.id===CENTRALE_ID) return;
+    (isArchived(l)?arc:act).push({l,i});
+  });
+  document.getElementById('lctr').textContent=`${act.length} lieux + Centrale`;
   const el=document.getElementById('lieu-list');
   const centrale=`<div class="pitem"><div class="pinfo"><div class="pnom"><span class="central-tag">Centrale</span> reçoit les stocks par défaut</div></div></div>`;
-  el.innerHTML=centrale+state.lieux.map((l,i)=>{
-    if(l.id===CENTRALE_ID) return '';
-    return `<div class="pitem">
-      <div class="pinfo"><div class="pnom">${l.nom}</div></div>
+  const row=({l,i})=>{
+    const a=isArchived(l);
+    const q=lieuStockTotal(l.id,stocks);
+    const note=Math.abs(q)>0.0000001?`<div class="pprix">stock non nul</div>`:'';
+    return `<div class="pitem${a?' archived':''}">
+      <div class="pinfo"><div class="pnom">${l.nom}${a?' <span class="arch-tag">archivé</span>':''}</div>${note}</div>
       <div class="pbtns">
-        <button class="ibtn edt" onclick="editLieu(${i})"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-        <button class="ibtn del" onclick="deleteLieu(${i})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+        ${a?`<button class="ibtn res" title="Restaurer" onclick="restoreLieu(${i})">${ICO_REST}</button>`
+           :`<button class="ibtn edt" title="Modifier" onclick="editLieu(${i})">${ICO_EDIT}</button>
+             <button class="ibtn arc" title="Archiver" onclick="archiveLieu(${i})">${ICO_ARCH}</button>`}
+        <button class="ibtn del" title="Supprimer" onclick="deleteLieu(${i})">${ICO_TRASH}</button>
       </div>
     </div>`;
-  }).join('');
+  };
+  el.innerHTML = centrale + act.map(row).join('')
+    + (arc.length ? archHead(arc.length)+(showArchived?arc.map(row).join(''):'') : '');
+}
+/* Archiver un lieu qui contient encore du stock le ferait sortir des listes
+   de transfert : le stock deviendrait impossible à sortir. On refuse. */
+function archiveLieu(i){
+  const l=state.lieux[i];
+  if(l.id===CENTRALE_ID){ alert("La Centrale ne peut pas être archivée."); return; }
+  const q=lieuStockTotal(l.id,computeStock());
+  if(Math.abs(q)>0.0000001){
+    alert(`"${l.nom}" contient encore du stock. Transfère-le ailleurs avant de l'archiver, sinon il deviendrait impossible de l'en sortir.`);
+    return;
+  }
+  if(!confirm(`Archiver "${l.nom}" ? Il disparaîtra des listes de saisie, son historique est conservé.`)) return;
+  state.lieux[i]={...l,archived:true}; save(); render();
+}
+function restoreLieu(i){
+  state.lieux[i]={...state.lieux[i]}; delete state.lieux[i].archived;
+  save(); render();
 }
 function openLieuSheet(){
   document.getElementById('lieu-sheet-title').textContent=editLieuIdx===null?'Nouveau lieu':'Modifier le lieu';
@@ -1394,8 +1562,17 @@ function editLieu(i){ editLieuIdx=i; document.getElementById('lm-nom').value=sta
 function deleteLieu(i){
   const l=state.lieux[i];
   if(l.id===CENTRALE_ID){ alert('La Centrale ne peut pas être supprimée.'); return; }
-  const hasTx=state.transactions.some(tx=>tx.lieuId===l.id||tx.fromId===l.id||tx.toId===l.id);
-  if(!confirm(hasTx?`"${l.nom}" a des transactions liées. Supprimer quand même ?`:`Supprimer "${l.nom}" ?`)) return;
+  const n=txCountLieu(l.id);
+  if(n){
+    const q=lieuStockTotal(l.id,computeStock());
+    if(Math.abs(q)>0.0000001){
+      alert(`"${l.nom}" a ${n} transaction${n>1?'s':''} et contient encore du stock. Transfère son stock ailleurs, il pourra ensuite être archivé.`);
+      return;
+    }
+    if(!confirm(`"${l.nom}" a ${n} transaction${n>1?'s':''} dans l'historique : le supprimer les rendrait illisibles.\n\nOK pour l'archiver à la place ?`)) return;
+    state.lieux[i]={...l,archived:true}; save(); render(); return;
+  }
+  if(!confirm(`Supprimer "${l.nom}" ? Il n'a aucune transaction, la suppression est définitive.`)) return;
   state.lieux.splice(i,1); save(); render();
 }
 function saveLieu(){
@@ -1470,13 +1647,13 @@ function exportReport(){
 
   // État du stock
   const stocks=computeStock();
-  const stockRows=state.produits.map(p=>{
+  const stockRows=state.produits.filter(p=>prodVisibleStock(p,stocks)).map(p=>{
     const tot=stocks[p.id]?stocks[p.id]._total:0;
     const parLieu=state.lieux.map(l=>{
       const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
       return q>0?`${esc(l.nom)} : ${esc(fmtQ(q,p.unit))}`:null;
     }).filter(Boolean).join(' · ') || '—';
-    return `<tr><td><b>${esc(p.abr)}</b> ${esc(p.nom)}</td>
+    return `<tr><td><b>${esc(p.abr)}</b> ${esc(p.nom)}${isArchived(p)?' <i>(archivé)</i>':''}</td>
       <td class="n ${tot<=0?'r':''}">${esc(fmtQ(tot,p.unit))}</td>
       <td class="sm">${parLieu}</td>
       <td class="n">${esc(fmtM(tot*(((cstR[p.id]&&cstR[p.id].qty>0)?cstR[p.id].val/cstR[p.id].qty:parseFloat(p.pa||0)))))} €</td></tr>`;
@@ -1516,6 +1693,8 @@ function exportReport(){
 
   const html=`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet"/>
+<meta name="referrer" content="no-referrer"/>
 <title>Rapport ${esc(periode)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1621,7 +1800,7 @@ function importJSON(ev){
       state.tresorerieInitiale=mig.tresorerieInitiale;
       ensureCentrale();
       save(); render();
-      alert('Import réussi : '+state.produits.length+' produits, '+state.lieux.length+' lieux, '+state.transactions.length+' transactions.');
+      alert('Import réussi : '+activeProduits().length+' produits, '+activeLieux().length+' lieux, '+state.transactions.length+' transactions.');
     }catch(err){ alert('Fichier invalide : '+err.message); }
     ev.target.value='';
   };
