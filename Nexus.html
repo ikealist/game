@@ -75,6 +75,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .pr{background:var(--red-dim);color:var(--red)}
 .pt{background:var(--purple-dim);color:var(--purple)}
 .pj{background:var(--blue-dim);color:var(--blue)}
+.pc{background:var(--amber-dim);color:var(--amber)}
 .txlieu{padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:var(--blue-dim);color:var(--blue)}
 .txprod{font-size:13px;font-weight:500}
 .txmeta{font-size:11px;color:var(--muted);margin-top:2px}
@@ -316,6 +317,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:8px">Le capital dont tu disposais avant d'utiliser l'application. Les achats le diminuent, les ventes l'augmentent.</div>
       </div>
+
+      <div class="vform" style="padding:14px;margin-bottom:12px">
+        <div class="arch-head" style="margin:0 0 10px">
+          <div class="seclabel">Mouvements de caisse</div>
+          <button class="arch-toggle on" onclick="openMvtSheet()">+ Ajouter</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Argent sorti ou remis dans la caisse sans achat ni vente : remboursement de prêt, prélèvement personnel, apport. Ces mouvements corrigent la trésorerie <b>sans toucher à la marge</b>.</div>
+        <div id="mvt-list"></div>
+      </div>
       <div class="ctoggle" style="grid-template-columns:1fr 1fr 1fr">
         <button class="ctbtn active" id="cfg-tab-prod" onclick="setCfgTab('prod')">Produits</button>
         <button class="ctbtn" id="cfg-tab-lieu" onclick="setCfgTab('lieu')">Lieux</button>
@@ -451,17 +461,46 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
   </div>
 </div>
 
+<div class="sbg" id="mvt-bg" onclick="closeMvtSheet(event)">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle" id="mvt-sheet-title">Mouvement de caisse</div>
+    <div class="vtoggle">
+      <button class="vtbtn" id="mvt-btn-sortie" onclick="setMvtSens('sortie')">↑ Sortie</button>
+      <button class="vtbtn" id="mvt-btn-entree" onclick="setMvtSens('entree')">↓ Apport</button>
+    </div>
+    <div class="field"><label>Montant (€)</label><input type="number" id="mvt-montant" step="0.01" min="0" inputmode="decimal" placeholder="0.00"/></div>
+    <div class="field"><label>Libellé</label><input type="text" id="mvt-motif" placeholder="ex: remboursement prêt août"/></div>
+    <div class="field"><label>Date</label><input type="text" id="mvt-day" placeholder="JJ/MM/AAAA"/></div>
+    <div id="mvt-info" style="font-size:11px;color:var(--muted);margin:-4px 0 12px"></div>
+    <button class="bfull" onclick="saveMvt()">Sauvegarder</button>
+    <button class="bcancel" onclick="closeMvtSheet()">Annuler</button>
+  </div>
+</div>
+
 <script>
 const DB = 'stockdepots_v2';
 const CENTRALE_ID = 'centrale';
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 /* Normalise n'importe quel ancien format vers le format courant */
 function migrateState(s){
-  const out={produits:[],lieux:[],vendeurs:[],transactions:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
+  const out={produits:[],lieux:[],vendeurs:[],transactions:[],mouvements:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
   const UNITS=['g','kg','mg'];
 
-  /* v8 : archivage. `archived` est optionnel — absent vaut actif.
+  /* v9 : mouvements de caisse. Registre volontairement séparé des
+     transactions — ce sont des mouvements d'argent, pas de marchandise.
+     Ils ne doivent JAMAIS entrer dans le stock, le coût des ventes ni la marge. */
+  out.mouvements=(s.mouvements||[]).map(m=>({
+    id:String(m.id),
+    sens: m.sens==='entree' ? 'entree' : 'sortie',
+    montant: Math.abs(parseFloat(m.montant)||0),
+    motif: String(m.motif||'').trim(),
+    day: m.day || todayDay(),
+    time: m.time || ''
+  })).filter(m=>m.montant>0);
+
+  /* v9 : archivage. `archived` est optionnel — absent vaut actif.
      On ne le pose que s'il est vrai, pour ne pas alourdir l'export. */
   const arch = e => (e.archived===true||e.archived==='true') ? {archived:true} : {};
 
@@ -508,7 +547,7 @@ function migrateState(s){
   return out;
 }
 
-let state = { produits:[], lieux:[], vendeurs:[], transactions:[], tresorerieInitiale:0 };
+let state = { produits:[], lieux:[], vendeurs:[], transactions:[], mouvements:[], tresorerieInitiale:0 };
 let curTab = 'tableau';
 let mode = 'vente';
 let editMode = 'vente';
@@ -525,7 +564,7 @@ let showArchived = false;
 function load() {
   try {
     const d = localStorage.getItem(DB);
-    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; state.tresorerieInitiale=s.tresorerieInitiale||0; }
+    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; state.mouvements=s.mouvements; state.tresorerieInitiale=s.tresorerieInitiale||0; }
   } catch(e){}
   ensureCentrale();
   backfillCosts();
@@ -632,10 +671,27 @@ function lieuName(id){ const l=state.lieux.find(x=>x.id===id); return l?l.nom:'?
 function prodById(id){ return state.produits.find(p=>p.id===id); }
 function prodPA(id){ const p=prodById(id); return p?parseFloat(p.pa||0):0; }
 
-/* ── Archivage (v8) ──
+/* ── Archivage (v9) ──
    Un élément archivé sort des listes déroulantes et des compteurs, mais reste
    dans `state` : son nom continue de résoudre dans le journal et les rapports,
    et il pèse toujours dans les calculs financiers. Archiver n'est PAS supprimer. */
+/* ── Mouvements de caisse (v9) ──
+   Sorties et apports ponctuels : remboursement d'un prêt, prélèvement
+   personnel, apport de capital. Ils déplacent de l'argent sans qu'aucune
+   marchandise ne bouge, donc ils touchent la TRÉSORERIE et elle seule :
+   ni le stock, ni sa valeur, ni le coût des ventes, ni la marge nette.
+   Traiter un remboursement de prêt comme une charge fausserait la marge. */
+function mouvementsTotaux(list){
+  const src = list || state.mouvements || [];
+  let sorties=0, entrees=0;
+  src.forEach(m=>{
+    const v=Math.abs(parseFloat(m.montant)||0);
+    if(m.sens==='entree') entrees+=v; else sorties+=v;
+  });
+  return { sorties, entrees, net: entrees-sorties };
+}
+function mouvementsDuJour(day){ return (state.mouvements||[]).filter(m=>m.day===day); }
+
 function isArchived(e){ return !!(e&&e.archived); }
 function activeProduits(){ return state.produits.filter(p=>!isArchived(p)); }
 function activeLieux(){ return state.lieux.filter(l=>!isArchived(l)); }
@@ -654,7 +710,7 @@ function txCountLieu(id){ return state.transactions.filter(t=>t.lieuId===id||t.f
 function txCountVend(id){ return state.transactions.filter(t=>t.vendeurId===id).length; }
 
 /* ── Render ── */
-function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); renderVendeurs(); updateHdr(); }
+function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); renderVendeurs(); renderMvts(); updateHdr(); }
 
 function updateHdr(){
   const nbProd = activeProduits().length;
@@ -686,14 +742,18 @@ function renderMetrics(){
     if(tx.type==='vente'){ revenu+=parseFloat(tx.price||0); cogs+=parseFloat(tx.qty)*txCost(tx); }
     if(tx.type==='ajustement'&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
   });
+  /* la marge ignore les mouvements de caisse : ce ne sont pas des charges */
   const marge=revenu-cogs-pertes;
-  const treso=parseFloat(state.tresorerieInitiale||0)+revenu-investi;
+  const mvt=mouvementsTotaux();
+  const treso=parseFloat(state.tresorerieInitiale||0)+revenu-investi+mvt.net;
   const patrimoine=treso+valStock;
   /* une rupture ne concerne que les produits encore actifs */
   const zeros=activeProduits().filter(p=>(stocks[p.id]?stocks[p.id]._total:0)<=0).length;
   document.getElementById('metrics').innerHTML=`
     <div class="mcard wide"><div class="mlabel">Trésorerie actuelle</div><div class="mval ${treso>=0?'cg':'cr'}">${fmtM(treso)} €</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + ventes − achats</div></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + ventes − achats${mvt.sorties?` − ${fmtM(mvt.sorties)} € sortis`:''}${mvt.entrees?` + ${fmtM(mvt.entrees)} € apportés`:''}</div></div>
+    ${mvt.sorties||mvt.entrees?`<div class="mcard wide"><div class="mlabel">Sorties de caisse (hors achats)</div><div class="mval ${mvt.sorties>0?'ca':'cg'}">−${fmtM(mvt.sorties)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">prêt, prélèvements… sans effet sur la marge</div></div>`:''}
     <div class="mcard wide"><div class="mlabel">Trésorerie + valeur du stock</div><div class="mval cb">${fmtM(patrimoine)} €</div></div>
     <div class="mcard wide"><div class="mlabel">Valeur du stock (coût réel)</div><div class="mval cy">${fmtM(valStock)} €</div></div>
     <div class="mcard"><div class="mlabel">Revenu des ventes</div><div class="mval cg">+${fmtM(revenu)} €</div></div>
@@ -1080,6 +1140,7 @@ function saveTx(){
 function allDays(){
   const set=new Set();
   state.transactions.forEach(t=>{ if(t.day) set.add(t.day); });
+  (state.mouvements||[]).forEach(m=>{ if(m.day) set.add(m.day); });
   return [...set].sort((a,b)=>{
     const pa=a.split('/').reverse().join('-'), pb=b.split('/').reverse().join('-');
     return pb.localeCompare(pa);
@@ -1090,13 +1151,19 @@ function renderJournal(){
   document.getElementById('journal-dates').innerHTML=
     `<button class="fchip ${journalDate==='all'?'active':''}" onclick="setJDate('all')">Tout</button>`+
     days.map(d=>`<button class="fchip ${journalDate===d?'active':''}" onclick="setJDate('${d}')">${d}</button>`).join('');
-  const types=[['all','Tout'],['vente','Ventes'],['reception','Réceptions'],['transfert','Transferts'],['ajustement','Ajustements']];
+  const types=[['all','Tout'],['vente','Ventes'],['reception','Réceptions'],['transfert','Transferts'],['ajustement','Ajustements'],['caisse','Caisse']];
   document.getElementById('journal-types').innerHTML=
     types.map(([v,l])=>`<button class="fchip ${journalType===v?'active':''}" onclick="setJType('${v}')">${l}</button>`).join('');
 
-  let txs=state.transactions.filter(t=>{
+  /* le filtre « Caisse » isole les mouvements d'argent, qui ne sont pas des transactions */
+  let txs = journalType==='caisse' ? [] : state.transactions.filter(t=>{
     if(journalDate!=='all' && t.day!==journalDate) return false;
     if(journalType!=='all' && t.type!==journalType) return false;
+    return true;
+  });
+  const mvts=(state.mouvements||[]).filter(m=>{
+    if(journalDate!=='all' && m.day!==journalDate) return false;
+    if(journalType!=='all' && journalType!=='caisse') return false;
     return true;
   });
 
@@ -1107,35 +1174,40 @@ function renderJournal(){
     if(t.type==='ajustement'&&parseFloat(t.qty)<0) per+=Math.abs(parseFloat(t.qty))*txCost(t);
   });
   const marge=rev-cogs-per;
+  const mv=mouvementsTotaux(mvts);
   document.getElementById('journal-summary').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div><div class="mlabel">Ventes</div><div class="mval cg" style="font-size:15px">+${fmtM(rev)} €</div></div>
       <div><div class="mlabel">Marge nette</div><div class="mval ${marge>=0?'cg':'cr'}" style="font-size:15px">${marge>=0?'+':''}${fmtM(marge)} €</div></div>
       <div><div class="mlabel">Investi</div><div class="mval cr" style="font-size:15px">−${fmtM(inv)} €</div></div>
       <div><div class="mlabel">Pertes</div><div class="mval ${per>0?'ca':'cg'}" style="font-size:15px">−${fmtM(per)} €</div></div>
+      ${mv.sorties||mv.entrees?`<div style="grid-column:span 2"><div class="mlabel">Sorties de caisse (hors marge)</div><div class="mval ca" style="font-size:15px">−${fmtM(mv.sorties)} €${mv.entrees?` <span style="color:var(--green)">+${fmtM(mv.entrees)} €</span>`:''}</div></div>`:''}
     </div>`;
 
   const rb=document.getElementById('report-btn');
   if(rb) rb.textContent = journalDate==='all' ? '📄 Ouvrir le rapport (tout)' : '📄 Ouvrir le rapport du '+journalDate;
 
   const el=document.getElementById('journal-list');
-  if(!txs.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
+  if(!txs.length && !mvts.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
 
-  const byDay={};
+  const byDay={}, mvtByDay={};
   txs.forEach(t=>{ (byDay[t.day]=byDay[t.day]||[]).push(t); });
-  const orderedDays=Object.keys(byDay).sort((a,b)=>{
+  mvts.forEach(m=>{ (mvtByDay[m.day]=mvtByDay[m.day]||[]).push(m); });
+  const orderedDays=[...new Set([...Object.keys(byDay),...Object.keys(mvtByDay)])].sort((a,b)=>{
     const pa=a.split('/').reverse().join('-'), pb=b.split('/').reverse().join('-');
     return pb.localeCompare(pa);
   });
   let html='';
   orderedDays.forEach(day=>{
-    const list=byDay[day].slice().reverse();
+    const list=(byDay[day]||[]).slice().reverse();
+    const mlist=(mvtByDay[day]||[]).slice().reverse();
     let dRev=0;
     list.forEach(t=>{ if(t.type==='vente') dRev+=parseFloat(t.price||0); });
     html+=`<div class="day-header"><span class="day-date">${day}</span>`+
       (dRev>0?`<span class="day-summary cg">+${fmtM(dRev)} €</span>`:`<span class="day-summary" style="color:var(--faint)">—</span>`)+
       `</div><div class="day-sep"></div>`;
     html+=renderTxList(list);
+    html+=mlist.map(mvtHTML).join('');
   });
   el.innerHTML=html;
 }
@@ -1190,6 +1262,24 @@ function groupHTML(g){
       <div class="txamt" style="color:var(--green)">+${fmtM(tot)} €</div>
       ${totQ?`<div class="txql">${totQ}</div>`:''}
       ${editBtn}
+    </div>
+  </div>`;
+}
+/* Ligne de journal pour un mouvement de caisse. Pastille distincte des
+   transactions : aucune marchandise n'a bougé, aucune quantité à afficher. */
+function mvtHTML(m){
+  const sortie=m.sens!=='entree';
+  return `<div class="txitem">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="txpill pc">Caisse</span>
+        <span class="txprod">${sortie?'Sortie':'Apport'}</span>
+      </div>
+      <div class="txmeta">${m.day||''} ${m.time||''}${m.motif?' · '+esc(m.motif):''}</div>
+    </div>
+    <div>
+      <div class="txamt" style="color:${sortie?'var(--amber)':'var(--green)'}">${sortie?'−':'+'}${fmtM(m.montant)} €</div>
+      <button class="ibtn edt" style="margin-top:4px;margin-left:auto" onclick="openMvtSheet('${m.id}')">${ICO_EDIT}</button>
     </div>
   </div>`;
 }
@@ -1585,6 +1675,86 @@ function saveLieu(){
   save(); closeLieuSheet(); editLieuIdx=null; render();
 }
 
+/* ── Mouvements de caisse ── */
+let editMvtId = null;
+let mvtSens = 'sortie';
+
+function renderMvts(){
+  const el=document.getElementById('mvt-list');
+  if(!el) return;
+  const list=(state.mouvements||[]).slice().sort((a,b)=>{
+    const k=m=>(m.day||'01/01/1970').split('/').reverse().join('-')+' '+(m.time||'00:00');
+    return k(b).localeCompare(k(a));
+  });
+  if(!list.length){ el.innerHTML='<div style="font-size:12px;color:var(--faint);padding:4px 2px">Aucun mouvement enregistré.</div>'; return; }
+  const t=mouvementsTotaux();
+  el.innerHTML=list.map(m=>{
+    const sortie=m.sens!=='entree';
+    return `<div class="pitem" style="padding:10px 12px">
+      <div class="pinfo">
+        <div class="pnom">${m.motif?esc(m.motif):'<span style="color:var(--faint)">sans libellé</span>'}</div>
+        <div class="pprix">${m.day||''}${m.time?' · '+m.time:''} · ${sortie?'sortie':'apport'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;color:${sortie?'var(--amber)':'var(--green)'}">${sortie?'−':'+'}${fmtM(m.montant)} €</span>
+        <button class="ibtn edt" title="Modifier" onclick="openMvtSheet('${m.id}')">${ICO_EDIT}</button>
+        <button class="ibtn del" title="Supprimer" onclick="deleteMvt('${m.id}')">${ICO_TRASH}</button>
+      </div>
+    </div>`;
+  }).join('')
+  +`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:8px 2px 0;border-top:.5px solid var(--border);margin-top:6px">
+      <span>Effet net sur la trésorerie</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:600;color:${t.net<0?'var(--amber)':'var(--green)'}">${t.net>=0?'+':'−'}${fmtM(Math.abs(t.net))} €</span>
+    </div>`;
+}
+
+function setMvtSens(s){
+  mvtSens = s==='entree' ? 'entree' : 'sortie';
+  document.getElementById('mvt-btn-sortie').className='vtbtn'+(mvtSens==='sortie'?' active-j':'');
+  document.getElementById('mvt-btn-entree').className='vtbtn'+(mvtSens==='entree'?' active-v':'');
+  document.getElementById('mvt-info').textContent = mvtSens==='sortie'
+    ? "Diminue la trésorerie. N'entre pas dans la marge : ce n'est pas un achat de marchandise."
+    : "Augmente la trésorerie. N'est pas comptée comme une vente.";
+}
+
+function openMvtSheet(id){
+  editMvtId = id || null;
+  const m = id ? (state.mouvements||[]).find(x=>x.id===id) : null;
+  document.getElementById('mvt-sheet-title').textContent = m ? 'Modifier le mouvement' : 'Mouvement de caisse';
+  document.getElementById('mvt-montant').value = m ? m.montant : '';
+  document.getElementById('mvt-motif').value = m ? m.motif : '';
+  document.getElementById('mvt-day').value = m ? (m.day||todayDay()) : todayDay();
+  setMvtSens(m ? m.sens : 'sortie');
+  document.getElementById('mvt-bg').classList.add('open');
+}
+function closeMvtSheet(e){
+  if(!e||e.target===document.getElementById('mvt-bg')){
+    document.getElementById('mvt-bg').classList.remove('open'); editMvtId=null;
+  }
+}
+function saveMvt(){
+  const montant=Math.abs(parseFloat(document.getElementById('mvt-montant').value));
+  const motif=document.getElementById('mvt-motif').value.trim();
+  const day=document.getElementById('mvt-day').value.trim()||todayDay();
+  if(isNaN(montant)||montant<=0){ alert('Renseigne un montant valide.'); return; }
+  if(!/^\d{2}\/\d{2}\/\d{4}$/.test(day)){ alert('Date attendue au format JJ/MM/AAAA.'); return; }
+  if(!state.mouvements) state.mouvements=[];
+  if(editMvtId){
+    const i=state.mouvements.findIndex(x=>x.id===editMvtId);
+    if(i>=0) state.mouvements[i]={...state.mouvements[i],sens:mvtSens,montant,motif,day};
+  } else {
+    state.mouvements.push({id:'m'+Date.now(),sens:mvtSens,montant,motif,day,time:nowTime()});
+  }
+  save(); closeMvtSheet(); editMvtId=null; render();
+}
+function deleteMvt(id){
+  const m=(state.mouvements||[]).find(x=>x.id===id);
+  if(!m) return;
+  if(!confirm(`Supprimer ce mouvement de ${fmtM(m.montant)} € ?`)) return;
+  state.mouvements=state.mouvements.filter(x=>x.id!==id);
+  save(); render();
+}
+
 /* ── Rapport partageable ── */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -1595,10 +1765,13 @@ function exportReport(){
     if(t.type==='vente') revTot+=parseFloat(t.price||0);
     if(t.type==='reception') invTot+=parseFloat(t.qty)*parseFloat(t.price||0);
   });
-  const treso=parseFloat(state.tresorerieInitiale||0)+revTot-invTot;
+  const mvtTot=mouvementsTotaux();
+  const treso=parseFloat(state.tresorerieInitiale||0)+revTot-invTot+mvtTot.net;
   const periode = journalDate==='all' ? 'Toutes périodes' : journalDate;
   const txs = state.transactions.filter(t=> journalDate==='all' || t.day===journalDate);
-  if(!txs.length){ alert('Aucune transaction sur cette période.'); return; }
+  const mvtsR = (state.mouvements||[]).filter(m=> journalDate==='all' || m.day===journalDate);
+  const mvtP = mouvementsTotaux(mvtsR);
+  if(!txs.length && !mvtsR.length){ alert('Aucune transaction sur cette période.'); return; }
 
   let rev=0,cogs=0,inv=0,pertes=0;
   txs.forEach(t=>{
@@ -1737,7 +1910,18 @@ details[open] summary.det::after{content:' ▴'}
 <div class="cards" style="margin-top:10px">
   <div class="card"><div class="l">Trésorerie actuelle</div><div class="v ${treso>=0?'g':'r'}">${esc(fmtM(treso))} €</div></div>
   <div class="card"><div class="l">Trésorerie + stock</div><div class="v b">${esc(fmtM(treso+valStock))} €</div></div>
+  ${mvtP.sorties?`<div class="card"><div class="l">Sorties de caisse</div><div class="v o">−${esc(fmtM(mvtP.sorties))} €</div></div>`:''}
+  ${mvtP.entrees?`<div class="card"><div class="l">Apports</div><div class="v g">+${esc(fmtM(mvtP.entrees))} €</div></div>`:''}
 </div>
+
+${mvtsR.length?`<h2>Mouvements de caisse</h2>
+<table><thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th style="text-align:right">Montant</th></tr></thead>
+<tbody>${mvtsR.slice().sort((a,b)=>{const k=m=>(m.day||'').split('/').reverse().join('-')+' '+(m.time||'');return k(b).localeCompare(k(a));}).map(m=>{
+  const s=m.sens!=='entree';
+  return `<tr><td class="sm">${esc(m.day||'')} ${esc(m.time||'')}</td><td>${s?'Sortie':'Apport'}</td><td>${esc(m.motif||'—')}</td>
+    <td class="n ${s?'o':'g'}">${s?'−':'+'}${esc(fmtM(m.montant))} €</td></tr>`;
+}).join('')}</tbody></table>
+<p class="sm" style="margin-top:6px">Ces mouvements n'entrent pas dans la marge : ce sont des sorties ou des apports d'argent, pas des achats de marchandise.</p>`:''}
 
 ${vendRows?`<h2>Ventes par vendeur</h2>
 <table><thead><tr><th>Vendeur</th><th style="text-align:right">Nb ventes</th><th style="text-align:right">Revenu</th><th style="text-align:right">Marge</th></tr></thead>
@@ -1797,6 +1981,7 @@ function importJSON(ev){
       state.lieux=mig.lieux;
       state.vendeurs=mig.vendeurs;
       state.transactions=mig.transactions;
+      state.mouvements=mig.mouvements;
       state.tresorerieInitiale=mig.tresorerieInitiale;
       ensureCentrale();
       save(); render();
