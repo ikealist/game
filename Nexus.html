@@ -23,6 +23,7 @@
   --amber:#fb923c; --amber-dim:rgba(251,146,60,0.12);
   --blue:#60a5fa; --blue-dim:rgba(96,165,250,0.12);
   --purple:#c084fc; --purple-dim:rgba(192,132,252,0.12);
+  --teal:#2dd4bf; --teal-dim:rgba(45,212,191,0.12);
   --nav-h:64px; --safe-b:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -34,7 +35,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 #content{flex:1;overflow-y:auto;padding:12px 14px;padding-bottom:calc(var(--nav-h) + var(--safe-b) + 8px)}
 #nav{position:fixed;bottom:0;left:0;right:0;height:calc(var(--nav-h) + var(--safe-b));background:var(--bg2);border-top:.5px solid var(--border);display:flex;padding-bottom:var(--safe-b);z-index:50}
 .nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--faint);font-size:9px;font-family:inherit;font-weight:500;cursor:pointer;padding:8px 0;transition:color .15s}
+/* Chaque onglet porte la couleur de sa pastille dans la présentation.
+   L'inactif reste gris : la couleur signale où l'on est, elle ne décore pas. */
 .nb.active{color:var(--accent)}
+.nb.t-tableau.active{color:var(--accent)}
+.nb.t-tx.active     {color:var(--green)}
+.nb.t-journal.active{color:var(--blue)}
+.nb.t-stock.active  {color:var(--purple)}
+.nb.t-caisses.active{color:var(--teal)}
+.nb.t-config.active {color:var(--amber)}
+.nb.active svg{filter:drop-shadow(0 0 6px currentColor);opacity:.95}
 .nb svg{width:21px;height:21px;stroke-width:1.8;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 .sec{display:none}.sec.active{display:block}
 /* metrics */
@@ -299,7 +309,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
     <!-- STOCK -->
     <div class="sec" id="tab-stock">
+      <div class="ctoggle" style="grid-template-columns:1fr 1fr">
+        <button class="ctbtn active" id="stk-tab-prod" onclick="setStockVue('produit')">Par produit</button>
+        <button class="ctbtn" id="stk-tab-lieu" onclick="setStockVue('lieu')">Par lieu</button>
+      </div>
       <div id="stock-list"></div>
+      <div id="stock-lieu-list" style="display:none"></div>
+    </div>
+
+    <!-- CAISSES -->
+    <div class="sec" id="tab-caisses">
+      <div class="banner">💰 L'argent d'une vente reste chez celui qui l'a encaissée jusqu'à ce que tu ailles le chercher. Ce que tu vois ici, c'est ce que chaque caisse est censée contenir.</div>
+      <div class="mgrid" id="caisses-metrics"></div>
+      <div class="seclabel">Caisses</div>
+      <div id="caisses-list"></div>
+      <div class="seclabel" style="margin-top:18px">Dernières remontées</div>
+      <div id="rem-history"></div>
     </div>
 
     <!-- CONFIG -->
@@ -350,19 +375,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
   </div>
   <nav id="nav">
-    <button class="nb active" onclick="showTab('tableau',this)">
+    <button class="nb t-tableau active" onclick="showTab('tableau',this)">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Tableau
     </button>
-    <button class="nb" onclick="showTab('tx',this)">
+    <button class="nb t-tx" onclick="showTab('tx',this)">
       <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Actions
     </button>
-    <button class="nb" onclick="showTab('journal',this)">
+    <button class="nb t-journal" onclick="showTab('journal',this)">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Journal
     </button>
-    <button class="nb" onclick="showTab('stock',this)">
+    <button class="nb t-stock" onclick="showTab('stock',this)">
       <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Stock
     </button>
-    <button class="nb" onclick="showTab('config',this)">
+    <button class="nb t-caisses" onclick="showTab('caisses',this)">
+      <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/><path d="M6 3h9l3 3"/></svg>Caisses
+    </button>
+    <button class="nb t-config" onclick="showTab('config',this)">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>Config
     </button>
   </nav>
@@ -461,6 +489,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
   </div>
 </div>
 
+<div class="sbg" id="rem-bg" onclick="closeRemSheet(event)">
+  <div class="sheet">
+    <div class="shandle"></div>
+    <div class="stitle" id="rem-sheet-title">Relever la caisse</div>
+    <div class="vform" style="padding:12px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:13px;color:var(--muted)">Caisse de <b id="rem-who" style="color:var(--text)"></b></span>
+        <span id="rem-attendu" style="font-family:'DM Mono',monospace;font-weight:600;color:var(--accent)"></span>
+      </div>
+    </div>
+    <input type="hidden" id="rem-attendu-val"/>
+    <div class="field"><label>Commission gardée par le vendeur (€)</label><input type="number" id="rem-commission" step="0.01" min="0" inputmode="decimal" placeholder="0.00" oninput="remPreview()"/></div>
+    <div class="field"><label>Montant que tu récupères (€)</label><input type="number" id="rem-recu" step="0.01" min="0" inputmode="decimal" placeholder="0.00" oninput="remPreview()"/></div>
+    <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);margin:-4px 0 12px;cursor:pointer">
+      <input type="checkbox" id="rem-solde" checked onchange="remPreview()" style="width:17px;height:17px;accent-color:var(--accent)"/>
+      J'ai vidé la caisse entièrement
+    </label>
+    <div id="rem-info" style="font-size:12px;color:var(--muted);margin:-4px 0 12px"></div>
+    <div class="field"><label>Date</label><input type="text" id="rem-day" placeholder="JJ/MM/AAAA"/></div>
+    <div class="field"><label>Note</label><input type="text" id="rem-note" placeholder="optionnel"/></div>
+    <button class="bfull" onclick="saveRem()">Enregistrer la remontée</button>
+    <button class="bcancel" onclick="closeRemSheet()">Annuler</button>
+  </div>
+</div>
+
 <div class="sbg" id="mvt-bg" onclick="closeMvtSheet(event)">
   <div class="sheet">
     <div class="shandle"></div>
@@ -481,12 +534,36 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <script>
 const DB = 'stockdepots_v2';
 const CENTRALE_ID = 'centrale';
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 
 /* Normalise n'importe quel ancien format vers le format courant */
 function migrateState(s){
-  const out={produits:[],lieux:[],vendeurs:[],transactions:[],mouvements:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
+  const out={produits:[],lieux:[],vendeurs:[],transactions:[],mouvements:[],remontees:[],tresorerieInitiale:parseFloat(s.tresorerieInitiale)||0};
   const UNITS=['g','kg','mg'];
+
+  /* Un état antérieur à la trésorerie répartie n'a pas de champ `remontees`.
+     Dans ce monde-là, chaque vente alimentait directement la trésorerie.
+     On marque donc tout l'historique comme déjà remonté : la trésorerie
+     affichée ne bouge pas d'un centime à la mise à jour, et les caisses
+     des détenteurs démarrent à zéro. Le test se fait sur l'absence du
+     champ, donc il ne se rejoue pas aux chargements suivants. */
+  const historiqueDejaRemonte = s.remontees === undefined;
+
+  /* Remontées de caisse : l'argent passe d'un détenteur à la trésorerie.
+     `attendu` est FIGÉ à l'enregistrement, comme le coût d'une vente —
+     sinon modifier une vieille vente réécrirait un écart déjà constaté. */
+  out.remontees=(s.remontees||[]).map(r=>({
+    id:String(r.id),
+    kind: r.kind==='lieu' ? 'lieu' : 'vendeur',
+    holderId: String(r.holderId||''),
+    attendu: parseFloat(r.attendu)||0,
+    commission: Math.max(0, parseFloat(r.commission)||0),
+    recu: Math.max(0, parseFloat(r.recu)||0),
+    solde: r.solde !== false,
+    note: String(r.note||'').trim(),
+    day: r.day || todayDay(),
+    time: r.time || ''
+  })).filter(r=>r.holderId);
 
   /* v9 : mouvements de caisse. Registre volontairement séparé des
      transactions — ce sont des mouvements d'argent, pas de marchandise.
@@ -542,12 +619,15 @@ function migrateState(s){
     if(o.type==='transfert'){ o.fromId=o.fromId||CENTRALE_ID; o.toId=o.toId||CENTRALE_ID; }
     if(o.price!=null) o.price=parseFloat(o.price)||0;
     delete o.unit; // l'unité vit sur le produit
+    // bascule vers la trésorerie répartie : l'ancien monde est réputé encaissé
+    if(o.type==='vente' && historiqueDejaRemonte) o.remonte=true;
+    if(o.type==='vente' && o.remonte!==true) delete o.remonte;
     return o;
   });
   return out;
 }
 
-let state = { produits:[], lieux:[], vendeurs:[], transactions:[], mouvements:[], tresorerieInitiale:0 };
+let state = { produits:[], lieux:[], vendeurs:[], transactions:[], mouvements:[], remontees:[], tresorerieInitiale:0 };
 let curTab = 'tableau';
 let mode = 'vente';
 let editMode = 'vente';
@@ -564,7 +644,7 @@ let showArchived = false;
 function load() {
   try {
     const d = localStorage.getItem(DB);
-    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; state.mouvements=s.mouvements; state.tresorerieInitiale=s.tresorerieInitiale||0; }
+    if (d) { const s=migrateState(JSON.parse(d)); state.produits=s.produits; state.lieux=s.lieux; state.vendeurs=s.vendeurs; state.transactions=s.transactions; state.mouvements=s.mouvements; state.remontees=s.remontees; state.tresorerieInitiale=s.tresorerieInitiale||0; }
   } catch(e){}
   ensureCentrale();
   backfillCosts();
@@ -692,6 +772,73 @@ function mouvementsTotaux(list){
 }
 function mouvementsDuJour(day){ return (state.mouvements||[]).filter(m=>m.day===day); }
 
+/* ── Trésorerie répartie ──
+   L'argent d'une vente reste chez celui qui l'a encaissé jusqu'à ce qu'on
+   aille le chercher. Le détenteur est le VENDEUR quand la vente en porte un,
+   sinon le LIEU — un point de vente peut faire office de vendeur. Un euro
+   n'a jamais deux détenteurs, sinon il serait compté deux fois.
+   Les ventes marquées `remonte` datent d'avant la bascule : elles ont déjà
+   alimenté la trésorerie et ne créditent aucune caisse. */
+function holderOf(tx){
+  if(tx.vendeurId) return { kind:'vendeur', id:tx.vendeurId };
+  return { kind:'lieu', id:tx.lieuId||CENTRALE_ID };
+}
+function holderKey(kind,id){ return kind+':'+id; }
+function holderName(kind,id){
+  return kind==='vendeur' ? vendName(id) : lieuName(id);
+}
+
+/* Solde de chaque caisse : { 'vendeur:v1': {kind,id,encaisse,commission,recu,manquant,solde} } */
+function caisses(){
+  const map={};
+  const get=(kind,id)=>{
+    const k=holderKey(kind,id);
+    return map[k] || (map[k]={kind,id,encaisse:0,commission:0,recu:0,dette:0,solde:0});
+  };
+  state.transactions.forEach(tx=>{
+    if(tx.type!=='vente' || tx.remonte===true) return;
+    const h=holderOf(tx);
+    get(h.kind,h.id).encaisse += parseFloat(tx.price||0);
+  });
+  (state.remontees||[]).forEach(r=>{
+    const c=get(r.kind,r.holderId);
+    c.commission += r.commission;
+    c.recu       += r.recu;
+    /* Caisse vidée et compte pas bon : l'argent n'est plus dans la boîte,
+       il devient une DETTE du détenteur. Ce n'est pas une perte — c'est une
+       créance : le total détenu est conservé, le résultat n'est pas amputé.
+       Un excédent lors d'une remontée ultérieure la résorbe. */
+    if(r.solde) c.dette += r.attendu - r.commission - r.recu;
+  });
+  Object.values(map).forEach(c=>{
+    c.solde = c.encaisse - c.commission - c.recu - c.dette;
+    if(Math.abs(c.solde) < 0.005) c.solde = 0;
+    if(Math.abs(c.dette) < 0.005) c.dette = 0;
+  });
+  return map;
+}
+/* Ce qu'une caisse doit contenir maintenant : le montant qu'on va chercher. */
+function caisseDe(kind,id){
+  const c=caisses()[holderKey(kind,id)];
+  return c ? c.solde : 0;
+}
+function caissesTotaux(){
+  const all=Object.values(caisses());
+  return {
+    enCaisse:   all.reduce((a,c)=>a+c.solde,0),
+    commissions:all.reduce((a,c)=>a+c.commission,0),
+    dettes:     all.reduce((a,c)=>a+c.dette,0),
+    recupere:   all.reduce((a,c)=>a+c.recu,0)
+  };
+}
+/* Détenteurs à afficher : solde, dette ou historique de remontées */
+function caissesActives(){
+  return Object.values(caisses())
+    .filter(c=>Math.abs(c.solde)>0.005 || Math.abs(c.dette)>0.005 || c.recu>0 || c.commission>0)
+    .sort((a,b)=>(b.solde+b.dette)-(a.solde+a.dette));
+}
+function dettesActives(){ return Object.values(caisses()).filter(c=>Math.abs(c.dette)>0.005); }
+
 function isArchived(e){ return !!(e&&e.archived); }
 function activeProduits(){ return state.produits.filter(p=>!isArchived(p)); }
 function activeLieux(){ return state.lieux.filter(l=>!isArchived(l)); }
@@ -710,17 +857,20 @@ function txCountLieu(id){ return state.transactions.filter(t=>t.lieuId===id||t.f
 function txCountVend(id){ return state.transactions.filter(t=>t.vendeurId===id).length; }
 
 /* ── Render ── */
-function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderProduits(); renderLieux(); renderVendeurs(); renderMvts(); updateHdr(); }
+function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderStockParLieu(); renderCaissesTab(); renderProduits(); renderLieux(); renderVendeurs(); renderMvts(); updateHdr(); }
 
 function updateHdr(){
   const nbProd = activeProduits().length;
   const nonCentral = activeLieux().filter(l=>l.id!==CENTRALE_ID).length;
-  const tabs={tableau:'📦 Stock Dépôts',tx:'🔄 Actions',journal:'📅 Journal',stock:'📦 Stock',config:'⚙️ Configuration'};
+  const cxH=caissesTotaux();
+  const nbRelever=caissesActives().filter(c=>c.solde>0.005).length;
+  const tabs={tableau:'📦 Stock Dépôts',tx:'🔄 Actions',journal:'📅 Journal',stock:'📦 Stock',caisses:'💰 Caisses',config:'⚙️ Configuration'};
   const subs={
-    tableau:`${nbProd} produits · ${nonCentral} lieux · ${state.transactions.length} tx`,
+    tableau:`${nbProd} produit${nbProd!==1?'s':''} · ${nonCentral} lieu${nonCentral!==1?'x':''} · ${state.transactions.length} tx`,
     tx:``,journal:`${state.transactions.length} transactions`,
-    stock:`${nbProd} produits`,
-    config:cfgTab==='prod'?`${nbProd} produits`:`${nonCentral} lieux (+ Centrale)`
+    stock:stockVue==='lieu'?`${nonCentral} lieu${nonCentral!==1?'x':''} (+ Centrale)`:`${nbProd} produit${nbProd!==1?'s':''}`,
+    caisses:`${fmtM(cxH.enCaisse)} € dans ${nbRelever} caisse${nbRelever!==1?'s':''}`,
+    config:cfgTab==='prod'?`${nbProd} produit${nbProd!==1?'s':''}`:`${nonCentral} lieu${nonCentral!==1?'x':''} (+ Centrale)`
   };
   document.getElementById('htitle').textContent=tabs[curTab]||'📦 Stock Dépôts';
   document.getElementById('hsub').textContent=subs[curTab]||'';
@@ -735,33 +885,53 @@ function saveTreso(){
 function renderMetrics(){
   const stocks=computeStock();
   const cst=cmpState();
-  let valStock=0,investi=0,revenu=0,cogs=0,pertes=0;
+  let valStock=0,investi=0,revenu=0,cogs=0,pertes=0,ventesDeja=0;
   state.produits.forEach(p=>{ const s=cst[p.id]; valStock += s?s.val:0; });
   state.transactions.forEach(tx=>{
     if(tx.type==='reception') investi+=parseFloat(tx.qty)*parseFloat(tx.price||0);
-    if(tx.type==='vente'){ revenu+=parseFloat(tx.price||0); cogs+=parseFloat(tx.qty)*txCost(tx); }
+    if(tx.type==='vente'){
+      revenu+=parseFloat(tx.price||0); cogs+=parseFloat(tx.qty)*txCost(tx);
+      // ventes d'avant la bascule : leur argent est déjà dans la trésorerie
+      if(tx.remonte===true) ventesDeja+=parseFloat(tx.price||0);
+    }
     if(tx.type==='ajustement'&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
   });
-  /* la marge ignore les mouvements de caisse : ce ne sont pas des charges */
+  /* La marge ne dépend pas de l'endroit où dort l'argent : une vente est
+     rentable dès qu'elle est faite, même si le vendeur détient encore les
+     billets. Les mouvements de caisse n'y entrent pas non plus. */
   const marge=revenu-cogs-pertes;
   const mvt=mouvementsTotaux();
-  const treso=parseFloat(state.tresorerieInitiale||0)+revenu-investi+mvt.net;
-  const patrimoine=treso+valStock;
+  const cx=caissesTotaux();
+  /* La commission est une charge : elle coûte. La dette d'un vendeur n'en est
+     pas une : c'est une créance, l'argent existe toujours, il est juste chez
+     quelqu'un d'autre. Elle ne doit donc pas amputer le résultat. */
+  const resultat=marge-cx.commissions;
+  const treso=parseFloat(state.tresorerieInitiale||0)+ventesDeja+cx.recupere-investi+mvt.net;
+  const patrimoine=treso+cx.enCaisse+cx.dettes+valStock;
   /* une rupture ne concerne que les produits encore actifs */
   const zeros=activeProduits().filter(p=>(stocks[p.id]?stocks[p.id]._total:0)<=0).length;
   document.getElementById('metrics').innerHTML=`
-    <div class="mcard wide"><div class="mlabel">Trésorerie actuelle</div><div class="mval ${treso>=0?'cg':'cr'}">${fmtM(treso)} €</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + ventes − achats${mvt.sorties?` − ${fmtM(mvt.sorties)} € sortis`:''}${mvt.entrees?` + ${fmtM(mvt.entrees)} € apportés`:''}</div></div>
+    <div class="mcard wide"><div class="mlabel">Trésorerie (ce que tu détiens)</div><div class="mval ${treso>=0?'cg':'cr'}">${fmtM(treso)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">départ ${fmtM(state.tresorerieInitiale||0)} € + remontées − achats${mvt.sorties?` − ${fmtM(mvt.sorties)} € sortis`:''}${mvt.entrees?` + ${fmtM(mvt.entrees)} € apportés`:''}</div></div>
+    <div class="mcard wide"><div class="mlabel">Encaissé, pas encore récupéré</div><div class="mval ${cx.enCaisse>0?'ca':'cg'}">${fmtM(cx.enCaisse)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${caissesActives().filter(c=>c.solde>0).length} caisse${caissesActives().filter(c=>c.solde>0).length!==1?'s':''} à relever · onglet Caisses</div></div>
     ${mvt.sorties||mvt.entrees?`<div class="mcard wide"><div class="mlabel">Sorties de caisse (hors achats)</div><div class="mval ${mvt.sorties>0?'ca':'cg'}">−${fmtM(mvt.sorties)} €</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px">prêt, prélèvements… sans effet sur la marge</div></div>`:''}
-    <div class="mcard wide"><div class="mlabel">Trésorerie + valeur du stock</div><div class="mval cb">${fmtM(patrimoine)} €</div></div>
+    ${cx.dettes>0.005?`<div class="mcard wide"><div class="mlabel">Dû par les vendeurs</div><div class="mval ca">${fmtM(cx.dettes)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">manquants constatés · ${dettesActives().map(c=>esc(holderName(c.kind,c.id))+' '+fmtM(c.dette)+' €').join(' · ')}</div></div>`:''}
+    <div class="mcard wide"><div class="mlabel">Total détenu (trésorerie + caisses${cx.dettes>0.005?' + dû':''} + stock)</div><div class="mval cb">${fmtM(patrimoine)} €</div></div>
     <div class="mcard wide"><div class="mlabel">Valeur du stock (coût réel)</div><div class="mval cy">${fmtM(valStock)} €</div></div>
     <div class="mcard"><div class="mlabel">Revenu des ventes</div><div class="mval cg">+${fmtM(revenu)} €</div></div>
     <div class="mcard"><div class="mlabel">Marge nette</div><div class="mval ${marge>=0?'cg':'cr'}">${marge>=0?'+':''}${fmtM(marge)} €</div></div>
     <div class="mcard"><div class="mlabel">Total investi (achats)</div><div class="mval cr">−${fmtM(investi)} €</div></div>
     <div class="mcard"><div class="mlabel">Pertes (casse, écarts)</div><div class="mval ${pertes>0?'ca':'cg'}">−${fmtM(pertes)} €</div></div>
+    ${cx.commissions?`
+    <div class="mcard wide"><div class="mlabel">Commissions vendeurs</div><div class="mval ca">−${fmtM(cx.commissions)} €</div></div>
+    <div class="mcard wide"><div class="mlabel">Résultat après commissions</div><div class="mval ${resultat>=0?'cg':'cr'}">${resultat>=0?'+':''}${fmtM(resultat)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">marge nette − commissions · les dettes n'en font pas partie</div></div>`:''}
     <div class="mcard wide"><div class="mlabel">Ruptures</div><div class="mval ${zeros>0?'cr':'cg'}">${zeros} produit${zeros!==1?'s':''}</div></div>
   `;
+  renderCaisses();
   const lieuEl=document.getElementById('lieu-metrics');
   if(!activeProduits().length){ lieuEl.innerHTML='<div class="empty"><div class="ico">📦</div>Aucun produit défini.</div>'; return; }
   /* un lieu archivé disparaît, sauf s'il lui reste du stock à ne pas perdre de vue */
@@ -1166,6 +1336,11 @@ function renderJournal(){
     if(journalType!=='all' && journalType!=='caisse') return false;
     return true;
   });
+  const rems=(state.remontees||[]).filter(r=>{
+    if(journalDate!=='all' && r.day!==journalDate) return false;
+    if(journalType!=='all' && journalType!=='caisse') return false;
+    return true;
+  });
 
   let rev=0,cogs=0,inv=0,per=0;
   txs.forEach(t=>{
@@ -1188,12 +1363,13 @@ function renderJournal(){
   if(rb) rb.textContent = journalDate==='all' ? '📄 Ouvrir le rapport (tout)' : '📄 Ouvrir le rapport du '+journalDate;
 
   const el=document.getElementById('journal-list');
-  if(!txs.length && !mvts.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
+  if(!txs.length && !mvts.length && !rems.length){ el.innerHTML='<div class="empty"><div class="ico">📅</div>Aucune transaction.</div>'; return; }
 
-  const byDay={}, mvtByDay={};
+  const byDay={}, mvtByDay={}, remByDay={};
   txs.forEach(t=>{ (byDay[t.day]=byDay[t.day]||[]).push(t); });
   mvts.forEach(m=>{ (mvtByDay[m.day]=mvtByDay[m.day]||[]).push(m); });
-  const orderedDays=[...new Set([...Object.keys(byDay),...Object.keys(mvtByDay)])].sort((a,b)=>{
+  rems.forEach(r=>{ (remByDay[r.day]=remByDay[r.day]||[]).push(r); });
+  const orderedDays=[...new Set([...Object.keys(byDay),...Object.keys(mvtByDay),...Object.keys(remByDay)])].sort((a,b)=>{
     const pa=a.split('/').reverse().join('-'), pb=b.split('/').reverse().join('-');
     return pb.localeCompare(pa);
   });
@@ -1208,6 +1384,7 @@ function renderJournal(){
       `</div><div class="day-sep"></div>`;
     html+=renderTxList(list);
     html+=mlist.map(mvtHTML).join('');
+    html+=(remByDay[day]||[]).slice().reverse().map(remHTML).join('');
   });
   el.innerHTML=html;
 }
@@ -1280,6 +1457,31 @@ function mvtHTML(m){
     <div>
       <div class="txamt" style="color:${sortie?'var(--amber)':'var(--green)'}">${sortie?'−':'+'}${fmtM(m.montant)} €</div>
       <button class="ibtn edt" style="margin-top:4px;margin-left:auto" onclick="openMvtSheet('${m.id}')">${ICO_EDIT}</button>
+    </div>
+  </div>`;
+}
+/* Ligne de journal pour une remontée de caisse. L'argent change de mains :
+   il quitte la caisse d'un détenteur pour rejoindre la trésorerie. */
+function remHTML(r){
+  const ecart = r.solde ? (r.recu + r.commission - r.attendu) : 0;
+  const details = [];
+  if(r.commission) details.push(`${fmtM(r.commission)} € de commission`);
+  if(Math.abs(ecart)>0.005) details.push(ecart<0
+    ? `<span style="color:var(--red)">doit ${fmtM(-ecart)} €</span>`
+    : `<span style="color:var(--green)">a rendu ${fmtM(ecart)} € de plus</span>`);
+  if(!r.solde) details.push('caisse non vidée');
+  return `<div class="txitem">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="txpill pc">Remontée</span>
+        <span class="txprod">${esc(holderName(r.kind,r.holderId))}</span>
+      </div>
+      <div class="txmeta">${r.day||''} ${r.time||''}${r.note?' · '+esc(r.note):''}</div>
+      ${details.length?`<div class="txmeta" style="margin-top:2px">${details.join(' · ')}</div>`:''}
+    </div>
+    <div>
+      <div class="txamt" style="color:var(--green)">+${fmtM(r.recu)} €</div>
+      <button class="ibtn edt" style="margin-top:4px;margin-left:auto" onclick="openRemSheet('${r.kind}','${r.holderId}','${r.id}')">${ICO_EDIT}</button>
     </div>
   </div>`;
 }
@@ -1369,7 +1571,86 @@ function renderStock(){
     </div>`;
   }).join('');
 }
-function toggleStock(id){ if(openStockIds.has(id)) openStockIds.delete(id); else openStockIds.add(id); renderStock(); }
+/* Les deux vues du stock partagent openStockIds : on rafraîchit celle qui est
+   affichée, sinon déplier une carte dans la vue par lieu ne ferait rien. */
+function toggleStock(id){
+  if(openStockIds.has(id)) openStockIds.delete(id); else openStockIds.add(id);
+  if(stockVue==='lieu') renderStockParLieu(); else renderStock();
+}
+
+/* ── Stock vu par lieu ──
+   Même donnée que la vue par produit, lue dans l'autre sens : ce que
+   contient chaque dépôt, et ce que ça vaut. */
+let stockVue = 'produit';
+function setStockVue(v){
+  stockVue = v==='lieu' ? 'lieu' : 'produit';
+  document.getElementById('stk-tab-prod').className='ctbtn'+(stockVue==='produit'?' active':'');
+  document.getElementById('stk-tab-lieu').className='ctbtn'+(stockVue==='lieu'?' active':'');
+  document.getElementById('stock-list').style.display = stockVue==='produit'?'block':'none';
+  document.getElementById('stock-lieu-list').style.display = stockVue==='lieu'?'block':'none';
+  renderStockParLieu();
+  updateHdr();
+}
+function renderStockParLieu(){
+  const el=document.getElementById('stock-lieu-list');
+  if(!el) return;
+  const stocks=computeStock(), cst=cmpState();
+  const lieux=state.lieux.filter(l=>lieuVisible(l,stocks));
+  if(!lieux.length){ el.innerHTML='<div class="empty"><div class="ico">📍</div>Aucun lieu.</div>'; return; }
+  el.innerHTML=lieux.map(l=>{
+    const isOpen=openStockIds.has('L'+l.id);
+    let val=0;
+    const rows=state.produits.map(p=>{
+      const q=stocks[p.id]?(stocks[p.id][l.id]||0):0;
+      if(Math.abs(q)<0.0000001) return null;
+      const s=cst[p.id];
+      const cmp=(s&&s.qty>0)?s.val/s.qty:parseFloat(p.pa||0);
+      val+=q*cmp;
+      return `<div class="lieu-row">
+        <span class="lieu-name"><b class="abr">${p.abr}</b> ${p.nom}${isArchived(p)?' <span class="arch-tag">archivé</span>':''}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="lieu-qty">${fmtQ(q,p.unit)}</span>
+          <button class="ibtn edt" style="width:26px;height:26px" title="Ajuster" onclick="event.stopPropagation();openAdj('${p.id}','${l.id}')">⚖</button>
+        </span>
+      </div>`;
+    }).filter(Boolean).join('');
+    const vide=!rows;
+    const nom=l.id===CENTRALE_ID?'<span class="central-tag">Centrale</span>':esc(l.nom);
+    return `<div class="stkcard ${isOpen?'open':''}">
+      <div class="stkhead" onclick="toggleStock('L${l.id}')">
+        <div class="stkinfo">
+          <div class="pname">${nom}${isArchived(l)?' <span class="arch-tag">archivé</span>':''}</div>
+          <div class="stkprice">${vide?'vide':fmtM(val)+' € de marchandise'}</div>
+        </div>
+        <div class="stkright"><span class="badge ${vide?'bzero':'bok'}">${vide?'—':fmtM(val)+' €'}</span><svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+      <div class="lieu-breakdown">${rows||'<div class="lieu-row"><span class="lieu-name" style="color:var(--faint)">Aucun produit ici</span></div>'}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Onglet Caisses ── */
+function renderCaissesTab(){
+  const m=document.getElementById('caisses-metrics');
+  if(!m) return;
+  const cx=caissesTotaux();
+  const aRelever=caissesActives().filter(c=>c.solde>0.005).length;
+  m.innerHTML=`
+    <div class="mcard wide"><div class="mlabel">Encaissé, pas encore récupéré</div><div class="mval ${cx.enCaisse>0?'ca':'cg'}">${fmtM(cx.enCaisse)} €</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${aRelever} caisse${aRelever!==1?'s':''} à relever</div></div>
+    ${cx.dettes>0.005?`<div class="mcard"><div class="mlabel">Dû par les vendeurs</div><div class="mval cr">${fmtM(cx.dettes)} €</div></div>`:''}
+    ${cx.commissions?`<div class="mcard"><div class="mlabel">Commissions versées</div><div class="mval ca">${fmtM(cx.commissions)} €</div></div>`:''}
+    ${cx.recupere?`<div class="mcard wide"><div class="mlabel">Total déjà remonté</div><div class="mval cg">${fmtM(cx.recupere)} €</div></div>`:''}
+  `;
+  const h=document.getElementById('rem-history');
+  const list=(state.remontees||[]).slice().sort((a,b)=>{
+    const k=r=>(r.day||'').split('/').reverse().join('-')+' '+(r.time||'');
+    return k(b).localeCompare(k(a));
+  }).slice(0,12);
+  h.innerHTML = list.length
+    ? list.map(remHTML).join('')
+    : '<div style="font-size:12px;color:var(--faint);padding:4px 2px">Aucune remontée enregistrée.</div>';
+}
 
 /* ── Navigation ── */
 function showTab(name,btn){
@@ -1675,6 +1956,107 @@ function saveLieu(){
   save(); closeLieuSheet(); editLieuIdx=null; render();
 }
 
+/* ── Caisses des détenteurs ── */
+function renderCaisses(){
+  const el=document.getElementById('caisses-list');
+  if(!el) return;
+  const list=caissesActives();
+  if(!list.length){ el.innerHTML='<div class="empty"><div class="ico">💰</div>Aucune caisse en cours. Les ventes à venir alimenteront celle de leur vendeur.</div>'; return; }
+  el.innerHTML=list.map(c=>{
+    const nom=holderName(c.kind,c.id);
+    const tag=c.kind==='lieu'?'<span class="arch-tag">lieu</span>':'';
+    const relevable=c.solde>0.005;
+    const dette = c.dette>0.005
+      ? `<div class="pprix" style="color:var(--red)">te doit ${fmtM(c.dette)} €</div>`
+      : (c.dette<-0.005 ? `<div class="pprix" style="color:var(--green)">avance de ${fmtM(-c.dette)} €</div>` : '');
+    return `<div class="pitem">
+      <div class="pinfo">
+        <div class="pnom">${esc(nom)} ${tag}</div>
+        <div class="pprix">${fmtM(c.encaisse)} € encaissés${c.recu?` · ${fmtM(c.recu)} € déjà remontés`:''}${c.commission?` · ${fmtM(c.commission)} € de commission`:''}</div>
+        ${dette}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-family:'DM Mono',monospace;font-weight:600;color:${relevable?'var(--accent)':'var(--muted)'}">${fmtM(c.solde)} €</span>
+        ${relevable?`<button class="ibtn arc" title="Relever la caisse" onclick="openRemSheet('${c.kind}','${c.id}')">${ICO_ARCH}</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Remontées de caisse ── */
+let editRemId = null;
+let remCtx = null;   // { kind, id }
+
+function openRemSheet(kind,id,editId){
+  const r = editId ? (state.remontees||[]).find(x=>x.id===editId) : null;
+  editRemId = editId || null;
+  remCtx = r ? { kind:r.kind, id:r.holderId } : { kind, id };
+  const attendu = r ? r.attendu : caisseDe(remCtx.kind, remCtx.id);
+  document.getElementById('rem-sheet-title').textContent = r ? 'Modifier la remontée' : 'Relever la caisse';
+  document.getElementById('rem-who').textContent = holderName(remCtx.kind, remCtx.id);
+  document.getElementById('rem-attendu').textContent = fmtM(attendu)+' €';
+  document.getElementById('rem-attendu-val').value = attendu;
+  document.getElementById('rem-commission').value = r ? (r.commission||'') : '';
+  document.getElementById('rem-recu').value = r ? r.recu : (attendu||'');
+  document.getElementById('rem-note').value = r ? r.note : '';
+  document.getElementById('rem-day').value = r ? (r.day||todayDay()) : todayDay();
+  document.getElementById('rem-solde').checked = r ? r.solde !== false : true;
+  remPreview();
+  document.getElementById('rem-bg').classList.add('open');
+}
+function closeRemSheet(e){
+  if(!e||e.target===document.getElementById('rem-bg')){
+    document.getElementById('rem-bg').classList.remove('open'); editRemId=null; remCtx=null;
+  }
+}
+/* Montre l'écart avant de valider : c'est là que se voit un manquant. */
+function remPreview(){
+  const el=document.getElementById('rem-info'); if(!el) return;
+  const attendu=parseFloat(document.getElementById('rem-attendu-val').value)||0;
+  const com=Math.max(0,parseFloat(document.getElementById('rem-commission').value)||0);
+  const recu=Math.max(0,parseFloat(document.getElementById('rem-recu').value)||0);
+  const solde=document.getElementById('rem-solde').checked;
+  if(!solde){
+    const reste=attendu-com-recu;
+    el.innerHTML=`Il restera <b style="color:var(--accent)">${fmtM(reste)} €</b> dans cette caisse.`;
+    return;
+  }
+  const ecart=recu+com-attendu;
+  if(Math.abs(ecart)<0.005){ el.innerHTML='<span style="color:var(--green)">Le compte est bon.</span>'; return; }
+  const who=remCtx?holderName(remCtx.kind,remCtx.id):'le détenteur';
+  el.innerHTML = ecart<0
+    ? `Il manque <b style="color:var(--red)">${fmtM(-ecart)} €</b> — ${esc(who)} te les devra. Ce n'est pas compté comme une perte.`
+    : `<b style="color:var(--green)">${fmtM(ecart)} €</b> de plus que prévu — de quoi résorber une dette antérieure.`;
+}
+function saveRem(){
+  if(!remCtx){ return; }
+  const attendu=parseFloat(document.getElementById('rem-attendu-val').value)||0;
+  const com=Math.max(0,parseFloat(document.getElementById('rem-commission').value)||0);
+  const recu=Math.max(0,parseFloat(document.getElementById('rem-recu').value)||0);
+  const solde=document.getElementById('rem-solde').checked;
+  const day=document.getElementById('rem-day').value.trim()||todayDay();
+  const note=document.getElementById('rem-note').value.trim();
+  if(recu<=0 && com<=0){ alert('Renseigne au moins un montant récupéré ou une commission.'); return; }
+  if(!/^\d{2}\/\d{2}\/\d{4}$/.test(day)){ alert('Date attendue au format JJ/MM/AAAA.'); return; }
+  if(!solde && com+recu>attendu+0.005){ alert("Tu ne peux pas sortir plus que ce que contient la caisse."); return; }
+  if(!state.remontees) state.remontees=[];
+  if(editRemId){
+    const i=state.remontees.findIndex(x=>x.id===editRemId);
+    if(i>=0) state.remontees[i]={...state.remontees[i],commission:com,recu,solde,day,note};
+  } else {
+    state.remontees.push({id:'r'+Date.now(),kind:remCtx.kind,holderId:remCtx.id,
+      attendu,commission:com,recu,solde,day,time:nowTime(),note});
+  }
+  save(); closeRemSheet(); editRemId=null; remCtx=null; render();
+}
+function deleteRem(id){
+  const r=(state.remontees||[]).find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`Supprimer cette remontée de ${fmtM(r.recu)} € ? L'argent retournera dans la caisse de ${holderName(r.kind,r.holderId)}.`)) return;
+  state.remontees=state.remontees.filter(x=>x.id!==id);
+  save(); render();
+}
+
 /* ── Mouvements de caisse ── */
 let editMvtId = null;
 let mvtSens = 'sortie';
@@ -1760,18 +2142,21 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 
 function exportReport(){
   const cstR=cmpState();
-  let revTot=0,invTot=0;
+  let revTot=0,invTot=0,ventesDejaR=0;
   state.transactions.forEach(t=>{
-    if(t.type==='vente') revTot+=parseFloat(t.price||0);
+    if(t.type==='vente'){ revTot+=parseFloat(t.price||0); if(t.remonte===true) ventesDejaR+=parseFloat(t.price||0); }
     if(t.type==='reception') invTot+=parseFloat(t.qty)*parseFloat(t.price||0);
   });
   const mvtTot=mouvementsTotaux();
-  const treso=parseFloat(state.tresorerieInitiale||0)+revTot-invTot+mvtTot.net;
+  const cxR=caissesTotaux();
+  const treso=parseFloat(state.tresorerieInitiale||0)+ventesDejaR+cxR.recupere-invTot+mvtTot.net;
   const periode = journalDate==='all' ? 'Toutes périodes' : journalDate;
   const txs = state.transactions.filter(t=> journalDate==='all' || t.day===journalDate);
   const mvtsR = (state.mouvements||[]).filter(m=> journalDate==='all' || m.day===journalDate);
+  const remsR = (state.remontees||[]).filter(r=> journalDate==='all' || r.day===journalDate);
   const mvtP = mouvementsTotaux(mvtsR);
-  if(!txs.length && !mvtsR.length){ alert('Aucune transaction sur cette période.'); return; }
+  const listeCaisses = caissesActives();
+  if(!txs.length && !mvtsR.length && !remsR.length){ alert('Aucune transaction sur cette période.'); return; }
 
   let rev=0,cogs=0,inv=0,pertes=0;
   txs.forEach(t=>{
@@ -1908,11 +2293,37 @@ details[open] summary.det::after{content:' ▴'}
   <div class="card"><div class="l">Valeur du stock</div><div class="v y">${esc(fmtM(valStock))} €</div></div>
 </div>
 <div class="cards" style="margin-top:10px">
-  <div class="card"><div class="l">Trésorerie actuelle</div><div class="v ${treso>=0?'g':'r'}">${esc(fmtM(treso))} €</div></div>
-  <div class="card"><div class="l">Trésorerie + stock</div><div class="v b">${esc(fmtM(treso+valStock))} €</div></div>
+  <div class="card"><div class="l">Trésorerie (détenue)</div><div class="v ${treso>=0?'g':'r'}">${esc(fmtM(treso))} €</div></div>
+  <div class="card"><div class="l">Encaissé non récupéré</div><div class="v ${cxR.enCaisse>0?'o':'g'}">${esc(fmtM(cxR.enCaisse))} €</div></div>
+  ${cxR.dettes>0.005?`<div class="card"><div class="l">Dû par les vendeurs</div><div class="v o">${esc(fmtM(cxR.dettes))} €</div></div>`:''}
+  <div class="card"><div class="l">Total détenu</div><div class="v b">${esc(fmtM(treso+cxR.enCaisse+cxR.dettes+valStock))} €</div></div>
+  ${cxR.commissions?`<div class="card"><div class="l">Commissions vendeurs</div><div class="v o">−${esc(fmtM(cxR.commissions))} €</div></div>`:''}
   ${mvtP.sorties?`<div class="card"><div class="l">Sorties de caisse</div><div class="v o">−${esc(fmtM(mvtP.sorties))} €</div></div>`:''}
   ${mvtP.entrees?`<div class="card"><div class="l">Apports</div><div class="v g">+${esc(fmtM(mvtP.entrees))} €</div></div>`:''}
 </div>
+
+${listeCaisses.length?`<h2>Caisses des points de vente</h2>
+<table><thead><tr><th>Détenteur</th><th style="text-align:right">Encaissé</th><th style="text-align:right">Remonté</th><th style="text-align:right">Commission</th><th style="text-align:right">Doit avoir</th><th style="text-align:right">Te doit</th></tr></thead>
+<tbody>${listeCaisses.map(c=>`<tr>
+  <td><b>${esc(holderName(c.kind,c.id))}</b>${c.kind==='lieu'?' <i>(lieu)</i>':''}</td>
+  <td class="n">${esc(fmtM(c.encaisse))} €</td>
+  <td class="n">${esc(fmtM(c.recu))} €</td>
+  <td class="n">${c.commission?esc(fmtM(c.commission))+' €':'—'}</td>
+  <td class="n ${c.solde>0.005?'o':'g'}"><b>${esc(fmtM(c.solde))} €</b></td>
+  <td class="n ${c.dette>0.005?'r':''}">${Math.abs(c.dette)>0.005?esc(fmtM(c.dette))+' €':'—'}</td></tr>`).join('')}</tbody></table>
+<p class="sm" style="margin-top:6px">« Doit avoir » est le montant que cette caisse est censée contenir aujourd'hui. « Te doit » cumule les manquants constatés lors des remontées : ce n'est pas une perte, c'est une créance.</p>`:''}
+
+${remsR.length?`<h2>Remontées de caisse</h2>
+<table><thead><tr><th>Date</th><th>Détenteur</th><th style="text-align:right">Attendu</th><th style="text-align:right">Commission</th><th style="text-align:right">Récupéré</th><th style="text-align:right">Écart</th></tr></thead>
+<tbody>${remsR.slice().sort((a,b)=>{const k=r=>(r.day||'').split('/').reverse().join('-')+' '+(r.time||'');return k(b).localeCompare(k(a));}).map(r=>{
+  const ec = r.solde ? (r.recu + r.commission - r.attendu) : 0;
+  return `<tr><td class="sm">${esc(r.day||'')} ${esc(r.time||'')}</td>
+    <td>${esc(holderName(r.kind,r.holderId))}</td>
+    <td class="n">${esc(fmtM(r.attendu))} €</td>
+    <td class="n">${r.commission?esc(fmtM(r.commission))+' €':'—'}</td>
+    <td class="n g">${esc(fmtM(r.recu))} €</td>
+    <td class="n ${Math.abs(ec)<0.005?'':(ec<0?'r':'g')}">${Math.abs(ec)<0.005?'—':(ec<0?'dette +':'résorbé ')+esc(fmtM(Math.abs(ec)))+' €'}</td></tr>`;
+}).join('')}</tbody></table>`:''}
 
 ${mvtsR.length?`<h2>Mouvements de caisse</h2>
 <table><thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th style="text-align:right">Montant</th></tr></thead>
@@ -1982,6 +2393,7 @@ function importJSON(ev){
       state.vendeurs=mig.vendeurs;
       state.transactions=mig.transactions;
       state.mouvements=mig.mouvements;
+      state.remontees=mig.remontees;
       state.tresorerieInitiale=mig.tresorerieInitiale;
       ensureCentrale();
       save(); render();
