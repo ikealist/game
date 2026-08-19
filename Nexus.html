@@ -102,6 +102,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .ibtn svg{width:14px;height:14px;stroke-width:2;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
 .ibtn.edt{color:var(--muted)}.ibtn.del{color:var(--red);border-color:rgba(248,113,113,.25)}
 .central-tag{font-size:10px;background:var(--accent-dim);color:var(--accent);padding:2px 8px;border-radius:99px;font-weight:600}
+.bars{display:flex;align-items:flex-end;gap:4px;background:var(--bg2);border:.5px solid var(--border);border-radius:12px;padding:10px 12px;overflow-x:auto}
+.bar{flex:1 0 26px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bar-n{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace}
+.bar-f{width:100%;max-width:22px;background:var(--accent);border-radius:3px 3px 0 0;opacity:.85}
+.bar-d{font-size:8px;color:var(--faint);white-space:nowrap}
 .arch-tag{font-size:10px;background:rgba(255,255,255,.06);color:var(--muted);padding:2px 8px;border-radius:99px;font-weight:600}
 .pitem.archived{opacity:.62}
 .ibtn.arc{color:var(--amber);border-color:rgba(251,146,60,.28)}
@@ -222,6 +227,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
     <!-- TABLEAU -->
     <div class="sec active" id="tab-tableau">
       <div class="mgrid" id="metrics"></div>
+      <div class="seclabel">Livraisons par jour</div>
+      <div id="livraisons"></div>
       <div class="seclabel">Valeur du stock par lieu (coût réel)</div>
       <div id="lieu-metrics"></div>
     </div>
@@ -472,7 +479,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <input type="number" id="adj-qty" step="any" inputmode="decimal" placeholder="0" oninput="adjPreview()"/>
     </div>
     <div id="adj-delta" style="font-size:13px;margin:-6px 0 14px;text-align:right"></div>
-    <div class="field"><label>Motif</label><input type="text" id="adj-note" placeholder="ex: pesée réelle, casse, perte"/></div>
+    <div class="field"><label>Motif</label><input type="text" id="adj-note" placeholder="ex: pesée réelle, casse, échange client"/></div>
+    <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);margin:-4px 0 12px;cursor:pointer">
+      <input type="checkbox" id="adj-sav" style="width:17px;height:17px;accent-color:var(--accent)"/>
+      Correction ou échange — ne pas compter en perte
+    </label>
     <button class="bfull" onclick="saveAdj()">Enregistrer l'ajustement</button>
     <button class="bcancel" onclick="closeAdjSheet()">Annuler</button>
   </div>
@@ -522,6 +533,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <button class="vtbtn" id="mvt-btn-sortie" onclick="setMvtSens('sortie')">↑ Sortie</button>
       <button class="vtbtn" id="mvt-btn-entree" onclick="setMvtSens('entree')">↓ Apport</button>
     </div>
+    <div class="field"><label>Sur quelle caisse</label><select id="mvt-holder" onchange="setMvtSens(mvtSens)"></select></div>
     <div class="field"><label>Montant (€)</label><input type="number" id="mvt-montant" step="0.01" min="0" inputmode="decimal" placeholder="0.00"/></div>
     <div class="field"><label>Libellé</label><input type="text" id="mvt-motif" placeholder="ex: remboursement prêt août"/></div>
     <div class="field"><label>Date</label><input type="text" id="mvt-day" placeholder="JJ/MM/AAAA"/></div>
@@ -573,6 +585,8 @@ function migrateState(s){
     sens: m.sens==='entree' ? 'entree' : 'sortie',
     montant: Math.abs(parseFloat(m.montant)||0),
     motif: String(m.motif||'').trim(),
+    /* rattaché à un détenteur = corrige SA caisse ; sinon la trésorerie */
+    ...(m.holderId ? {holderKind: m.holderKind==='lieu'?'lieu':'vendeur', holderId:String(m.holderId)} : {}),
     day: m.day || todayDay(),
     time: m.time || ''
   })).filter(m=>m.montant>0);
@@ -620,6 +634,7 @@ function migrateState(s){
     if(o.price!=null) o.price=parseFloat(o.price)||0;
     delete o.unit; // l'unité vit sur le produit
     // bascule vers la trésorerie répartie : l'ancien monde est réputé encaissé
+    if(o.type==='ajustement' && o.sav!==true) delete o.sav;
     if(o.type==='vente' && historiqueDejaRemonte) o.remonte=true;
     if(o.type==='vente' && o.remonte!==true) delete o.remonte;
     return o;
@@ -762,7 +777,8 @@ function prodPA(id){ const p=prodById(id); return p?parseFloat(p.pa||0):0; }
    ni le stock, ni sa valeur, ni le coût des ventes, ni la marge nette.
    Traiter un remboursement de prêt comme une charge fausserait la marge. */
 function mouvementsTotaux(list){
-  const src = list || state.mouvements || [];
+  /* seuls les mouvements SANS détenteur touchent la trésorerie centrale */
+  const src = (list || state.mouvements || []).filter(m=>!m.holderId);
   let sorties=0, entrees=0;
   src.forEach(m=>{
     const v=Math.abs(parseFloat(m.montant)||0);
@@ -793,12 +809,16 @@ function caisses(){
   const map={};
   const get=(kind,id)=>{
     const k=holderKey(kind,id);
-    return map[k] || (map[k]={kind,id,encaisse:0,commission:0,recu:0,dette:0,solde:0});
+    return map[k] || (map[k]={kind,id,encaisse:0,ajust:0,commission:0,recu:0,dette:0,solde:0});
   };
   state.transactions.forEach(tx=>{
     if(tx.type!=='vente' || tx.remonte===true) return;
     const h=holderOf(tx);
     get(h.kind,h.id).encaisse += parseFloat(tx.price||0);
+  });
+  (state.mouvements||[]).forEach(m=>{
+    if(!m.holderId) return;
+    get(m.holderKind,m.holderId).ajust += (m.sens==='entree'?1:-1)*m.montant;
   });
   (state.remontees||[]).forEach(r=>{
     const c=get(r.kind,r.holderId);
@@ -811,7 +831,7 @@ function caisses(){
     if(r.solde) c.dette += r.attendu - r.commission - r.recu;
   });
   Object.values(map).forEach(c=>{
-    c.solde = c.encaisse - c.commission - c.recu - c.dette;
+    c.solde = c.encaisse + c.ajust - c.commission - c.recu - c.dette;
     if(Math.abs(c.solde) < 0.005) c.solde = 0;
     if(Math.abs(c.dette) < 0.005) c.dette = 0;
   });
@@ -834,7 +854,7 @@ function caissesTotaux(){
 /* Détenteurs à afficher : solde, dette ou historique de remontées */
 function caissesActives(){
   return Object.values(caisses())
-    .filter(c=>Math.abs(c.solde)>0.005 || Math.abs(c.dette)>0.005 || c.recu>0 || c.commission>0)
+    .filter(c=>Math.abs(c.solde)>0.005 || Math.abs(c.dette)>0.005 || c.recu>0 || c.commission>0 || Math.abs(c.ajust)>0.005)
     .sort((a,b)=>(b.solde+b.dette)-(a.solde+a.dette));
 }
 function dettesActives(){ return Object.values(caisses()).filter(c=>Math.abs(c.dette)>0.005); }
@@ -857,7 +877,7 @@ function txCountLieu(id){ return state.transactions.filter(t=>t.lieuId===id||t.f
 function txCountVend(id){ return state.transactions.filter(t=>t.vendeurId===id).length; }
 
 /* ── Render ── */
-function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderStockParLieu(); renderCaissesTab(); renderProduits(); renderLieux(); renderVendeurs(); renderMvts(); updateHdr(); }
+function render(){ renderMetrics(); renderTxTab(); renderJournal(); renderStock(); renderStockParLieu(); renderCaissesTab(); renderLivraisons(); renderProduits(); renderLieux(); renderVendeurs(); renderMvts(); updateHdr(); }
 
 function updateHdr(){
   const nbProd = activeProduits().length;
@@ -894,7 +914,7 @@ function renderMetrics(){
       // ventes d'avant la bascule : leur argent est déjà dans la trésorerie
       if(tx.remonte===true) ventesDeja+=parseFloat(tx.price||0);
     }
-    if(tx.type==='ajustement'&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
+    if(tx.type==='ajustement'&&!tx.sav&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
   });
   /* La marge ne dépend pas de l'endroit où dort l'argent : une vente est
      rentable dès qu'elle est faite, même si le vendeur détient encore les
@@ -1129,6 +1149,7 @@ function openAdj(prodId,lieuId){
   const s=computeStock();
   const cur=(s[prodId]&&s[prodId][lieuId])||0;
   adjCtx={prodId,lieuId,cur,unit:p.unit};
+  document.getElementById('adj-sav').checked=false;
   document.getElementById('adj-ctx').innerHTML=`<b style="color:var(--text)">${p.abr} — ${p.nom}</b><br>à ${lieuName(lieuId)} · stock enregistré : <b style="color:var(--accent)">${fmtQ(cur,p.unit)}</b>`;
   document.getElementById('adj-label').textContent=`Quantité réelle constatée (${p.unit})`;
   document.getElementById('adj-qty').value='';
@@ -1157,6 +1178,7 @@ function saveAdj(){
     prodId:adjCtx.prodId, lieuId:adjCtx.lieuId, qty:delta,
     cost:+currentCost(adjCtx.prodId).toFixed(4),
     note:document.getElementById('adj-note').value.trim(),
+    ...(document.getElementById('adj-sav').checked?{sav:true}:{}),
     day:todayDay(), time:nowTime()
   });
   save(); closeAdjSheet(); render();
@@ -1346,7 +1368,7 @@ function renderJournal(){
   txs.forEach(t=>{
     if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*txCost(t); }
     if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
-    if(t.type==='ajustement'&&parseFloat(t.qty)<0) per+=Math.abs(parseFloat(t.qty))*txCost(t);
+    if(t.type==='ajustement'&&!t.sav&&parseFloat(t.qty)<0) per+=Math.abs(parseFloat(t.qty))*txCost(t);
   });
   const marge=rev-cogs-per;
   const mv=mouvementsTotaux(mvts);
@@ -1452,7 +1474,7 @@ function mvtHTML(m){
         <span class="txpill pc">Caisse</span>
         <span class="txprod">${sortie?'Sortie':'Apport'}</span>
       </div>
-      <div class="txmeta">${m.day||''} ${m.time||''}${m.motif?' · '+esc(m.motif):''}</div>
+      <div class="txmeta">${m.day||''} ${m.time||''}${m.motif?' · '+esc(m.motif):''}${m.holderId?' · caisse de '+esc(holderName(m.holderKind,m.holderId)):''}</div>
     </div>
     <div>
       <div class="txamt" style="color:${sortie?'var(--amber)':'var(--green)'}">${sortie?'−':'+'}${fmtM(m.montant)} €</div>
@@ -1956,6 +1978,29 @@ function saveLieu(){
   save(); closeLieuSheet(); editLieuIdx=null; render();
 }
 
+/* ── Livraisons par jour ──
+   Une vente groupée = une livraison, d'où le regroupement par groupId. */
+function renderLivraisons(){
+  const el=document.getElementById('livraisons'); if(!el) return;
+  const parJour={};
+  state.transactions.forEach(t=>{
+    if(t.type!=='vente') return;
+    (parJour[t.day]=parJour[t.day]||new Set()).add(t.groupId||t.id);
+  });
+  const jours=Object.keys(parJour).sort((a,b)=>
+    a.split('/').reverse().join('').localeCompare(b.split('/').reverse().join(''))).slice(-14);
+  if(!jours.length){ el.innerHTML='<div style="font-size:12px;color:var(--faint);padding:4px 2px">Aucune livraison enregistrée.</div>'; return; }
+  const max=Math.max(...jours.map(j=>parJour[j].size));
+  el.innerHTML=`<div class="bars">`+jours.map(j=>{
+    const n=parJour[j].size;
+    return `<div class="bar" title="${j} : ${n} livraison${n>1?'s':''}">
+      <span class="bar-n">${n}</span>
+      <span class="bar-f" style="height:${Math.max(6, n/max*46)}px"></span>
+      <span class="bar-d">${j.slice(0,5)}</span>
+    </div>`;
+  }).join('')+`</div>`;
+}
+
 /* ── Caisses des détenteurs ── */
 function renderCaisses(){
   const el=document.getElementById('caisses-list');
@@ -1972,7 +2017,7 @@ function renderCaisses(){
     return `<div class="pitem">
       <div class="pinfo">
         <div class="pnom">${esc(nom)} ${tag}</div>
-        <div class="pprix">${fmtM(c.encaisse)} € encaissés${c.recu?` · ${fmtM(c.recu)} € déjà remontés`:''}${c.commission?` · ${fmtM(c.commission)} € de commission`:''}</div>
+        <div class="pprix">${fmtM(c.encaisse)} € encaissés${c.recu?` · ${fmtM(c.recu)} € déjà remontés`:''}${c.commission?` · ${fmtM(c.commission)} € de commission`:''}${c.ajust?` · ${c.ajust>0?'+':'−'}${fmtM(Math.abs(c.ajust))} € de correction`:''}</div>
         ${dette}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -2094,14 +2139,24 @@ function setMvtSens(s){
   mvtSens = s==='entree' ? 'entree' : 'sortie';
   document.getElementById('mvt-btn-sortie').className='vtbtn'+(mvtSens==='sortie'?' active-j':'');
   document.getElementById('mvt-btn-entree').className='vtbtn'+(mvtSens==='entree'?' active-v':'');
-  document.getElementById('mvt-info').textContent = mvtSens==='sortie'
-    ? "Diminue la trésorerie. N'entre pas dans la marge : ce n'est pas un achat de marchandise."
-    : "Augmente la trésorerie. N'est pas comptée comme une vente.";
+  const sel=document.getElementById('mvt-holder');
+  const cible = sel && sel.value ? 'la caisse de '+sel.options[sel.selectedIndex].text : 'la trésorerie';
+  document.getElementById('mvt-info').textContent = (mvtSens==='sortie'
+    ? 'Diminue '+cible+'.' : 'Augmente '+cible+'.')
+    + " N'entre ni dans la marge ni dans le chiffre d'affaires.";
 }
 
+function buildHolderSel(sel, val){
+  const el=document.getElementById(sel); if(!el) return;
+  el.innerHTML='<option value="">Trésorerie centrale</option>'
+    + activeVendeurs().map(v=>`<option value="vendeur:${v.id}">${esc(v.nom)}</option>`).join('')
+    + activeLieux().map(l=>`<option value="lieu:${l.id}">${esc(l.nom)} (lieu)</option>`).join('');
+  if(val && [...el.options].some(o=>o.value===val)) el.value=val;
+}
 function openMvtSheet(id){
   editMvtId = id || null;
   const m = id ? (state.mouvements||[]).find(x=>x.id===id) : null;
+  buildHolderSel('mvt-holder', m && m.holderId ? m.holderKind+':'+m.holderId : '');
   document.getElementById('mvt-sheet-title').textContent = m ? 'Modifier le mouvement' : 'Mouvement de caisse';
   document.getElementById('mvt-montant').value = m ? m.montant : '';
   document.getElementById('mvt-motif').value = m ? m.motif : '';
@@ -2121,11 +2176,15 @@ function saveMvt(){
   if(isNaN(montant)||montant<=0){ alert('Renseigne un montant valide.'); return; }
   if(!/^\d{2}\/\d{2}\/\d{4}$/.test(day)){ alert('Date attendue au format JJ/MM/AAAA.'); return; }
   if(!state.mouvements) state.mouvements=[];
+  const h=(document.getElementById('mvt-holder').value||'').split(':');
+  const cible = h[0] ? {holderKind:h[0], holderId:h[1]} : {};
   if(editMvtId){
     const i=state.mouvements.findIndex(x=>x.id===editMvtId);
-    if(i>=0) state.mouvements[i]={...state.mouvements[i],sens:mvtSens,montant,motif,day};
+    if(i>=0){ const o={...state.mouvements[i],sens:mvtSens,montant,motif,day,...cible};
+      if(!h[0]){ delete o.holderKind; delete o.holderId; }
+      state.mouvements[i]=o; }
   } else {
-    state.mouvements.push({id:'m'+Date.now(),sens:mvtSens,montant,motif,day,time:nowTime()});
+    state.mouvements.push({id:'m'+Date.now(),sens:mvtSens,montant,motif,day,time:nowTime(),...cible});
   }
   save(); closeMvtSheet(); editMvtId=null; render();
 }
@@ -2162,7 +2221,7 @@ function exportReport(){
   txs.forEach(t=>{
     if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*txCost(t); }
     if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
-    if(t.type==='ajustement'&&parseFloat(t.qty)<0) pertes+=Math.abs(parseFloat(t.qty))*txCost(t);
+    if(t.type==='ajustement'&&!t.sav&&parseFloat(t.qty)<0) pertes+=Math.abs(parseFloat(t.qty))*txCost(t);
   });
   const marge=rev-cogs-pertes;
 
