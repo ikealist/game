@@ -310,6 +310,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <button class="io-btn" id="report-btn" style="width:100%;margin-bottom:12px;color:var(--blue);border-color:rgba(96,165,250,.3)" onclick="exportReport()">📄 Ouvrir le rapport</button>
       <div class="fbar" id="journal-dates"></div>
       <div class="fbar" id="journal-types"></div>
+      <div class="field" style="margin-bottom:10px"><select id="journal-prod" onchange="setJProd(this.value)"></select></div>
       <div class="mcard wide" id="journal-summary" style="margin-bottom:14px"></div>
       <div id="journal-list"></div>
     </div>
@@ -652,6 +653,7 @@ let editLieuIdx = null;
 let cfgTab = 'prod';
 let journalDate = 'all';
 let journalType = 'all';
+let journalProd = 'all';
 let openStockIds = new Set();
 let showArchived = false;
 
@@ -1340,9 +1342,27 @@ function allDays(){
 }
 function renderJournal(){
   const days=allDays();
+  /* nombre de livraisons du jour, collé à la puce de date : une vente groupée
+     compte pour une, et le compte suit le filtre produit en cours. */
+  const ventesDuJour=d=>{
+    const g=new Set();
+    state.transactions.forEach(t=>{
+      if(t.type!=='vente'||t.day!==d) return;
+      if(journalProd!=='all'&&t.prodId!==journalProd) return;
+      g.add(t.groupId||t.id);
+    });
+    return g.size;
+  };
   document.getElementById('journal-dates').innerHTML=
     `<button class="fchip ${journalDate==='all'?'active':''}" onclick="setJDate('all')">Tout</button>`+
-    days.map(d=>`<button class="fchip ${journalDate===d?'active':''}" onclick="setJDate('${d}')">${d}</button>`).join('');
+    days.map(d=>{
+      const n=ventesDuJour(d);
+      return `<button class="fchip ${journalDate===d?'active':''}" onclick="setJDate('${d}')">${d}${n?` <b style="color:var(--accent)">${n}</b>`:''}</button>`;
+    }).join('');
+  const ps=document.getElementById('journal-prod');
+  ps.innerHTML='<option value="all">Tous les produits</option>'
+    + state.produits.map(p=>`<option value="${p.id}">${esc(p.abr)} — ${esc(p.nom)}${isArchived(p)?' (archivé)':''}</option>`).join('');
+  ps.value=journalProd;
   const types=[['all','Tout'],['vente','Ventes'],['reception','Réceptions'],['transfert','Transferts'],['ajustement','Ajustements'],['caisse','Caisse']];
   document.getElementById('journal-types').innerHTML=
     types.map(([v,l])=>`<button class="fchip ${journalType===v?'active':''}" onclick="setJType('${v}')">${l}</button>`).join('');
@@ -1351,14 +1371,17 @@ function renderJournal(){
   let txs = journalType==='caisse' ? [] : state.transactions.filter(t=>{
     if(journalDate!=='all' && t.day!==journalDate) return false;
     if(journalType!=='all' && t.type!==journalType) return false;
+    if(journalProd!=='all' && t.prodId!==journalProd) return false;
     return true;
   });
   const mvts=(state.mouvements||[]).filter(m=>{
+    if(journalProd!=='all') return false;
     if(journalDate!=='all' && m.day!==journalDate) return false;
     if(journalType!=='all' && journalType!=='caisse') return false;
     return true;
   });
   const rems=(state.remontees||[]).filter(r=>{
+    if(journalProd!=='all') return false;
     if(journalDate!=='all' && r.day!==journalDate) return false;
     if(journalType!=='all' && journalType!=='caisse') return false;
     return true;
@@ -1412,6 +1435,7 @@ function renderJournal(){
 }
 function setJDate(d){ journalDate=d; renderJournal(); }
 function setJType(t){ journalType=t; renderJournal(); }
+function setJProd(v){ journalProd=v; renderJournal(); }
 
 /* ── Regroupement des ventes ── */
 let openGroups = new Set();
