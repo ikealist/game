@@ -54,6 +54,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .mlabel{font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
 .mval{font-size:18px;font-weight:600;font-family:'DM Mono',monospace}
 .cg{color:var(--green)}.cr{color:var(--red)}.ca{color:var(--amber)}.cy{color:var(--accent)}.cb{color:var(--blue)}
+.daylate{color:var(--accent);font-weight:600;text-transform:none;letter-spacing:0}
 .seclabel{font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
 /* badge */
 .badge{display:inline-block;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace}
@@ -294,6 +295,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
         <div class="total-preview" id="total-preview"></div>
 
         <div class="field">
+          <label>Date <span id="f-day-hint" class="daylate"></span></label>
+          <input type="text" id="f-day" placeholder="JJ/MM/AAAA" inputmode="numeric" oninput="dayHint()"/>
+        </div>
+
+        <div class="field">
           <label>Note</label>
           <input type="text" id="f-note" placeholder="optionnel"/>
         </div>
@@ -429,6 +435,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <div class="field"><label id="e-qty-label">Quantité</label><input type="number" id="e-qty" min="0.001" step="any" inputmode="decimal"/></div>
       <div class="field" id="e-wrap-price"><label id="e-price-label">Prix (€)</label><input type="number" id="e-price" step="0.01" inputmode="decimal"/></div>
     </div>
+    <div class="field"><label>Date</label><input type="text" id="e-day" placeholder="JJ/MM/AAAA" inputmode="numeric"/></div>
     <div class="field"><label>Note</label><input type="text" id="e-note" placeholder="optionnel"/></div>
     <button class="bfull" onclick="saveEditTx()">Enregistrer</button>
     <button class="bcancel" onclick="deleteTx()" style="color:var(--red)">Supprimer</button>
@@ -480,6 +487,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <input type="number" id="adj-qty" step="any" inputmode="decimal" placeholder="0" oninput="adjPreview()"/>
     </div>
     <div id="adj-delta" style="font-size:13px;margin:-6px 0 14px;text-align:right"></div>
+    <div class="field"><label>Date</label><input type="text" id="adj-day" placeholder="JJ/MM/AAAA" inputmode="numeric"/></div>
     <div class="field"><label>Motif</label><input type="text" id="adj-note" placeholder="ex: pesée réelle, casse, échange client"/></div>
     <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);margin:-4px 0 12px;cursor:pointer">
       <input type="checkbox" id="adj-sav" style="width:17px;height:17px;accent-color:var(--accent)"/>
@@ -763,6 +771,20 @@ function fmtQ(q,unit){
   return s+' '+(unit||'kg');
 }
 function todayDay(){ return new Date().toLocaleDateString('fr-FR'); }
+/* Date de saisie : rien = aujourd'hui, sinon la journee reellement concernee (saisie a posteriori).
+   Renvoie null et alerte si la date n'existe pas. */
+function readDay(id){
+  const v=(document.getElementById(id).value||'').trim()||todayDay();
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v);
+  const d=m&&new Date(+m[3],+m[2]-1,+m[1]);
+  if(!d||d.getDate()!==+m[1]||d.getMonth()!==+m[2]-1){ alert('Date invalide — format attendu JJ/MM/AAAA.'); return null; }
+  return v;
+}
+function dayHint(){
+  const el=document.getElementById('f-day-hint'); if(!el) return;
+  const v=(document.getElementById('f-day').value||'').trim();
+  el.textContent=(v&&v!==todayDay())?'· antidatée':'';
+}
 function nowTime(){ return new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
 function lieuName(id){ const l=state.lieux.find(x=>x.id===id); return l?l.nom:'?'; }
 function prodById(id){ return state.produits.find(p=>p.id===id); }
@@ -1156,6 +1178,7 @@ function openAdj(prodId,lieuId){
   document.getElementById('adj-label').textContent=`Quantité réelle constatée (${p.unit})`;
   document.getElementById('adj-qty').value='';
   document.getElementById('adj-note').value='';
+  document.getElementById('adj-day').value=todayDay();
   document.getElementById('adj-delta').innerHTML='';
   document.getElementById('adj-bg').classList.add('open');
 }
@@ -1171,6 +1194,7 @@ function adjPreview(){
 function closeAdjSheet(e){ if(!e||e.target===document.getElementById('adj-bg')){ document.getElementById('adj-bg').classList.remove('open'); adjCtx=null; } }
 function saveAdj(){
   if(!adjCtx) return;
+  const day=readDay('adj-day'); if(!day) return;
   const v=parseFloat(document.getElementById('adj-qty').value);
   if(isNaN(v)||v<0){ alert('Renseigne une quantité valide.'); return; }
   const delta=v-adjCtx.cur;
@@ -1181,7 +1205,7 @@ function saveAdj(){
     cost:+currentCost(adjCtx.prodId).toFixed(4),
     note:document.getElementById('adj-note').value.trim(),
     ...(document.getElementById('adj-sav').checked?{sav:true}:{}),
-    day:todayDay(), time:nowTime()
+    day, time:nowTime()
   });
   save(); closeAdjSheet(); render();
 }
@@ -1207,6 +1231,9 @@ function setMode(m){
   const plabels={vente:'Prix de vente (€)',reception:"Prix d'achat (€/u)"};
   document.getElementById('f-price-label').textContent=plabels[m]||'Prix (€)';
   if(m==='vente') renderCart();
+  const fd=document.getElementById('f-day');
+  if(!fd.value) fd.value=todayDay();
+  dayHint();
   prefill();
   const fn=document.getElementById('f-note');
   fn.placeholder = (m==='ajustement') ? 'motif obligatoire (ex : non livré, casse)' : 'optionnel';
@@ -1255,7 +1282,8 @@ function saveTx(){
   const p=prodById(prodId);
   if(mode!=='vente' && mode!=='ajustement' && (!prodId||isNaN(qty)||qty<=0)){ alert('Renseigne une quantité valide.'); return; }
 
-  const base={id:Date.now().toString(),prodId,qty,note,day:todayDay(),time:nowTime()};
+  const day0=readDay('f-day'); if(!day0) return;
+  const base={id:Date.now().toString(),prodId,qty,note,day:day0,time:nowTime()};
 
   if(mode==='reception'){
     const price=parseFloat(document.getElementById('f-price').value||0);
@@ -1280,7 +1308,7 @@ function saveTx(){
         return;
       }
     }
-    const day=todayDay(), time=nowTime();
+    const day=day0, time=nowTime();
     const vendeurId=document.getElementById('f-vendeur').value||null;
     const groupId='g'+Date.now();
     // état des coûts avant la vente, mis à jour ligne par ligne
@@ -1311,7 +1339,7 @@ function saveTx(){
     state.transactions.push({
       id:Date.now().toString(), type:'ajustement',
       prodId, lieuId:lid, qty:delta, cost:+currentCost(prodId).toFixed(4),
-      note, day:todayDay(), time:nowTime()
+      note, day:day0, time:nowTime()
     });
   }
   else if(mode==='transfert'){
@@ -1750,6 +1778,7 @@ function openEditTx(id){
   document.getElementById('e-qty').value=tx.qty;
   document.getElementById('e-price').value=tx.price!=null?tx.price:'';
   document.getElementById('e-note').value=tx.note||'';
+  document.getElementById('e-day').value=tx.day||todayDay();
   setEditMode(tx.type);
   editUnitLabel();
   document.getElementById('edit-tx-bg').classList.add('open');
@@ -1783,7 +1812,8 @@ function saveEditTx(){
   const note=document.getElementById('e-note').value.trim();
   const p=prodById(prodId);
   if(!prodId||isNaN(qty)||qty<=0){ alert('Quantité invalide.'); return; }
-  const updated={...tx,prodId,qty,note,type:editMode};
+  const day=readDay('e-day'); if(!day) return;
+  const updated={...tx,prodId,qty,note,day,type:editMode};
   delete updated.lieuId; delete updated.fromId; delete updated.toId; delete updated.price; delete updated.vendeurId;
 
   if(editMode==='reception'){
@@ -2103,10 +2133,9 @@ function saveRem(){
   const com=Math.max(0,parseFloat(document.getElementById('rem-commission').value)||0);
   const recu=Math.max(0,parseFloat(document.getElementById('rem-recu').value)||0);
   const solde=document.getElementById('rem-solde').checked;
-  const day=document.getElementById('rem-day').value.trim()||todayDay();
   const note=document.getElementById('rem-note').value.trim();
   if(recu<=0 && com<=0){ alert('Renseigne au moins un montant récupéré ou une commission.'); return; }
-  if(!/^\d{2}\/\d{2}\/\d{4}$/.test(day)){ alert('Date attendue au format JJ/MM/AAAA.'); return; }
+  const day=readDay('rem-day'); if(!day) return;
   if(!solde && com+recu>attendu+0.005){ alert("Tu ne peux pas sortir plus que ce que contient la caisse."); return; }
   if(!state.remontees) state.remontees=[];
   if(editRemId){
@@ -2196,9 +2225,8 @@ function closeMvtSheet(e){
 function saveMvt(){
   const montant=Math.abs(parseFloat(document.getElementById('mvt-montant').value));
   const motif=document.getElementById('mvt-motif').value.trim();
-  const day=document.getElementById('mvt-day').value.trim()||todayDay();
   if(isNaN(montant)||montant<=0){ alert('Renseigne un montant valide.'); return; }
-  if(!/^\d{2}\/\d{2}\/\d{4}$/.test(day)){ alert('Date attendue au format JJ/MM/AAAA.'); return; }
+  const day=readDay('mvt-day'); if(!day) return;
   if(!state.mouvements) state.mouvements=[];
   const h=(document.getElementById('mvt-holder').value||'').split(':');
   const cible = h[0] ? {holderKind:h[0], holderId:h[1]} : {};
