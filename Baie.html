@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baie — variétés Amsterdam</title>
+<style>
+:root{
+  color-scheme:dark;
+  --ink:#0D0F12; --panel:#14171C; --panel-2:#1A1E24; --panel-3:#20252D;
+  --line:#262B33; --line-2:#333A44;
+  --text:#E9ECF0; --text-2:#A6AEBA; --text-3:#7C8593;
+  --low:#A47BEF; --mid:#F272BE; --high:#FF8A4C;
+  --ramp:linear-gradient(90deg,#7B3FE4 0%,#E8299B 52%,#FF8A4C 100%);
+  --font-ui:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --font-num:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--text);font:14px/1.55 var(--font-ui);padding:24px 24px 88px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:23px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 4px}
+.sub{color:var(--text-3);font-size:11px;margin:0 0 24px;font-family:var(--font-num)}
+details.note{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 20px;margin-bottom:24px}
+details.note summary{cursor:pointer;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);list-style:none}
+details.note summary::-webkit-details-marker{display:none}
+details.note summary::before{content:"+ ";color:var(--mid)}
+details.note[open] summary::before{content:"– "}
+details.note ul{margin:12px 0 0;padding-left:16px;color:var(--text-2);font-size:14px;max-width:68ch}
+details.note li{margin:5px 0}
+details.note b{color:var(--text)}
+.ctrl{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+input[type=search],select{background:var(--ink);color:var(--text);border:1px solid var(--line-2);border-radius:6px;padding:9px 12px;font:14px/1.4 var(--font-ui)}
+input[type=search]{flex:1 1 240px;min-width:0}
+input[type=search]::placeholder{color:var(--text-3)}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--mid);outline-offset:2px;border-radius:3px}
+::selection{background:rgba(232,41,155,.32);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+.chip{background:var(--panel-2);border:1px solid var(--line-2);color:var(--text-2);border-radius:99px;padding:5px 14px;font:14px var(--font-ui);cursor:pointer;transition:color 120ms,border-color 120ms}
+.chip:hover{border-color:#414A57;color:var(--text)}
+.chip[aria-pressed=true]{color:var(--text);border-color:var(--mid);box-shadow:0 0 0 3px rgba(232,41,155,.16)}
+.grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;grid-template-columns:1fr}
+@media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+@media(min-width:1000px){.grid{grid-template-columns:1fr 1fr 1fr}}
+.c{background:var(--panel);padding:18px 20px;cursor:pointer;transition:background 130ms}
+.c:hover{background:var(--panel-2)}
+.chd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.chd h3{font-size:18px;font-weight:600;margin:0;flex:1 1 auto}
+.badge{font:11px/1 var(--font-ui);font-weight:600;letter-spacing:.11em;text-transform:uppercase;border-radius:99px;padding:5px 10px;background:var(--panel-3)}
+.Sativa{color:var(--low)}
+.Hybride{color:var(--mid)}
+.Indica{color:var(--high)}
+.deb{font:11px var(--font-ui);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3)}
+.est{color:var(--text-3);font-family:var(--font-num)}
+.sens{color:var(--text-2);font-size:14px;margin:6px 0 14px;max-width:68ch}
+.b{display:grid;grid-template-columns:70px 1fr 56px;gap:10px;align-items:center;margin:6px 0}
+.b span:first-child{font:11px var(--font-ui);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3)}
+.b .v{font:14px var(--font-num);font-variant-numeric:tabular-nums;color:var(--text-2);text-align:right}
+.trk{height:3px;border-radius:99px;background:var(--panel-3);overflow:hidden}
+.trk i{display:block;height:100%;width:calc(var(--p) * 1%);background:var(--ramp);background-size:calc(10000% / max(var(--p),1)) 100%}
+.cft{display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.cft button{flex:1;background:var(--panel-2);border:1px solid var(--line-2);color:var(--text-3);border-radius:6px;padding:7px;font:14px var(--font-ui);cursor:pointer;transition:color 120ms,border-color 120ms}
+.cft button:hover{border-color:#414A57;color:var(--text-2)}
+.cft button[aria-pressed=true]{color:var(--text);border-color:var(--mid)}
+.empty{color:var(--text-3);text-align:center;padding:48px 0;font-size:14px}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:22px;max-width:min(760px,94vw);width:100%;box-shadow:0 24px 60px -12px rgba(0,0,0,.7)}
+dialog::backdrop{background:rgba(6,7,9,.76);backdrop-filter:blur(3px)}
+dialog h2{margin:0 0 8px;font-size:18px}
+.close{float:right;background:transparent;border:0;color:var(--text-3);font:18px var(--font-ui);cursor:pointer;line-height:1;padding:0 4px}
+.close:hover{color:var(--text)}
+.kv{margin:16px 0 0;font-size:14px;max-width:68ch}
+.kv dt{color:var(--text-3);font-size:11px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;margin-top:14px}
+.kv dd{margin:3px 0 0;color:var(--text-2)}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tag{background:var(--panel-3);border-radius:99px;padding:4px 11px;font-size:14px;color:var(--text-2)}
+.warn{background:rgba(232,41,155,.08);border:1px solid rgba(232,41,155,.4);border-radius:6px;padding:11px 13px;font-size:14px;color:var(--text-2);margin-top:18px;max-width:68ch}
+.warn b{color:var(--mid)}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:14px}
+th,td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left;vertical-align:top;min-width:130px;color:var(--text-2)}
+th[scope=row]{color:var(--text-3);font-weight:600;font-size:11px;letter-spacing:.11em;text-transform:uppercase;width:92px;min-width:92px}
+td b{color:var(--text)}
+td.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+.bar-cmp{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font-size:14px;color:var(--text-2)}
+.bar-cmp button{background:linear-gradient(90deg,var(--mid),var(--high));color:#14060F;border:0;border-radius:6px;padding:8px 18px;font:600 14px var(--font-ui);cursor:pointer;box-shadow:0 3px 16px -4px rgba(232,41,155,.55)}
+.bar-cmp button[disabled]{background:var(--panel-2);color:var(--text-2);border:1px solid rgba(232,41,155,.35);box-shadow:none}
+.bar-cmp button.g{background:transparent;color:var(--text-3);border:1px solid var(--line-2);box-shadow:none;font-weight:400}
+[hidden]{display:none!important}
+@media(max-width:560px){
+  body{padding:16px 16px 84px}
+  .grid{border-left:0;border-right:0;border-radius:0}
+}
+@media(prefers-reduced-motion:reduce){*{transition-duration:1ms!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Baie</h1>
+<p class="sub">Coffee shops d'Amsterdam — <span id="count"></span></p>
+
+<details class="note">
+  <summary>À savoir avant de choisir</summary>
+  <ul>
+    <li><b>Indica</b> — relaxant, corps lourd, plutôt le soir.</li>
+    <li><b>Sativa</b> — énergisant, cérébral, plutôt la journée.</li>
+    <li><b>Hybride</b> — entre les deux.</li>
+    <li><b>THC</b> = puissance psychoactive. <b>CBD</b> = modère les effets anxiogènes.</li>
+    <li>Commencer petit, attendre 20–30 min avant de reprendre.</li>
+    <li>Les taux affichés sont indicatifs et varient d'un shop à l'autre. Un <b>*</b> signale des données estimées.</li>
+  </ul>
+</details>
+
+<div class="ctrl">
+  <input type="search" id="q" placeholder="Rechercher : nom, saveur, effet…" aria-label="Rechercher">
+  <select id="sort" aria-label="Tri">
+    <option value="az">A → Z</option>
+    <option value="thc-">THC décroissant</option>
+    <option value="thc+">THC croissant</option>
+    <option value="cal-">Plus calmant</option>
+    <option value="cal+">Moins calmant</option>
+  </select>
+</div>
+<div class="chips" id="chips">
+  <button class="chip" data-f="Indica" aria-pressed="false">Indica</button>
+  <button class="chip" data-f="Sativa" aria-pressed="false">Sativa</button>
+  <button class="chip" data-f="Hybride" aria-pressed="false">Hybride</button>
+  <button class="chip" data-f="debutant" aria-pressed="false">Débutant</button>
+  <button class="chip" data-f="fav" aria-pressed="false">Favoris</button>
+</div>
+
+<div class="grid" id="grid"></div>
+<p class="empty" id="empty" hidden>Aucune variété ne correspond.</p>
+</div>
+
+<div class="bar-cmp" id="cbar" hidden>
+  <span id="cnb"></span>
+  <button id="cgo">Comparer</button>
+  <button class="g" id="cclr">Vider</button>
+</div>
+
+<dialog id="dlg"><button class="close" id="dclose" aria-label="Fermer">&times;</button><div id="dlgc"></div></dialog>
+
+<script>
+const D=[
+{"nom":"Amnesia","type":"Sativa","thc":20,"cbd":1,"calmant":20,"debutant":false,"estime":false,"sensation":"Classic Amsterdam head high","effets":"Euphorie mentale, énergie, créativité — le classique d'Amsterdam","saveurs":["Citron","Terreux","Haze"],"duree":"2–4h","ideal":"Journée active, musées, exploration","attention":"Classique mais puissant — petite dose pour débuter"},
+{"nom":"Amnesia Top","type":"Sativa","thc":22,"cbd":1,"calmant":18,"debutant":false,"estime":true,"sensation":"Peak cerebral high","effets":"Euphorie cérébrale intense, énergie vive, créativité — coupe premium","saveurs":["Citron","Haze","Épicé"],"duree":"2–4h","ideal":"Journée, art, expériences créatives","attention":"Coupe premium — plus puissante que l'Amnesia standard"},
+{"nom":"Amnesia Hydro","type":"Sativa","thc":21,"cbd":1,"calmant":20,"debutant":false,"estime":true,"sensation":"Clean cerebral high","effets":"Euphorie mentale vive, énergie, créativité — culture hydroponique, montée plus rapide","saveurs":["Citron","Terreux","Épicé"],"duree":"2–3h","ideal":"Journée active, art, musées","attention":"Hydro = onset rapide, commencer prudemment"},
+{"nom":"Animal Cookie","type":"Indica","thc":22,"cbd":1,"calmant":80,"debutant":false,"estime":false,"sensation":"Heavy body, mental fog","effets":"Relaxation profonde, sédation, bonheur calme","saveurs":["Vanille","Cookie","Sucré"],"duree":"3–5h","ideal":"Soirée calme, douleurs, sommeil","attention":"Couch-lock fort"},
+{"nom":"Apple Fritter","type":"Hybride","thc":24,"cbd":1,"calmant":60,"debutant":false,"estime":false,"sensation":"Balanced high","effets":"Relaxation équilibrée, euphorie, bien-être","saveurs":["Pomme","Pâtisserie","Terreux"],"duree":"3–4h","ideal":"Détente, créativité légère","attention":"THC élevé — apparaît aussi sous « Apple Fritzer » ou « Apple »"},
+{"nom":"Bananaconda","type":"Hybride","thc":22,"cbd":1,"calmant":60,"debutant":false,"estime":true,"sensation":"Tropical & smooth","effets":"Euphorie fruitée, relaxation progressive, bonheur calme","saveurs":["Banane","Tropical","Sucré"],"duree":"3–4h","ideal":"Soirée, musique, détente","attention":"Données estimées — vérifier au shop"},
+{"nom":"Berry US","type":"Hybride","thc":18,"cbd":1,"calmant":58,"debutant":true,"estime":true,"sensation":"Mellow berry haze","effets":"Relaxation fruitée, corps détendu, mental apaisé","saveurs":["Myrtille","Baies","Sucré"],"duree":"2–3h","ideal":"Fin de journée, calme","attention":"Données estimées — vérifier au shop"},
+{"nom":"Biscotti","type":"Indica","thc":21,"cbd":1,"calmant":75,"debutant":false,"estime":false,"sensation":"Mellowing","effets":"Calme mental, corps lourd, bonheur discret","saveurs":["Cookie","Noisette","Diesel"],"duree":"3–4h","ideal":"Fin de journée, stress, douleurs","attention":"Sédatif — éviter si besoin d'être actif"},
+{"nom":"Black","type":"Indica","thc":23,"cbd":1,"calmant":82,"debutant":false,"estime":true,"sensation":"Very heavy & sedating","effets":"Sédation puissante, corps très lourd, calme profond","saveurs":["Terreux","Boisé","Épicé"],"duree":"4–6h","ideal":"Sommeil, douleurs, fin de soirée","attention":"Très sédatif — nom générique, demander la génétique exacte"},
+{"nom":"Black Cherry","type":"Indica","thc":21,"cbd":1,"calmant":72,"debutant":false,"estime":true,"sensation":"Sweet & sedating","effets":"Relaxation fruitée profonde, corps lourd, euphorie douce","saveurs":["Cerise noire","Sucré","Terreux"],"duree":"3–5h","ideal":"Soirée, détente, sommeil","attention":"Données estimées — vérifier au shop"},
+{"nom":"Blue Lemon","type":"Hybride","thc":19,"cbd":1,"calmant":45,"debutant":true,"estime":true,"sensation":"Fruity & balanced","effets":"Euphorie fruitée, détente équilibrée, humeur positive","saveurs":["Myrtille","Citron","Fruité"],"duree":"2–3h","ideal":"Journée ou soirée, polyvalent","attention":"Blueberry × Lemon — bien dosé pour débuter"},
+{"nom":"Bomba","type":"Hybride","thc":22,"cbd":1,"calmant":58,"debutant":false,"estime":true,"sensation":"Punchy & relaxing","effets":"Montée franche puis relaxation corporelle marquée","saveurs":["Terreux","Fruité","Épicé"],"duree":"3–4h","ideal":"Soirée, décompression","attention":"Nom de shop — demander la génétique et le taux de THC"},
+{"nom":"Candy Peach","type":"Hybride","thc":18,"cbd":1,"calmant":40,"debutant":true,"estime":false,"sensation":"Uplifting & sociable","effets":"Euphorie légère, créativité, légèreté","saveurs":["Pêche","Fruité","Sucré"],"duree":"2–3h","ideal":"Balade, socialiser, musique","attention":"Anxiété légère possible"},
+{"nom":"Chantilly","type":"Hybride","thc":18,"cbd":1,"calmant":45,"debutant":true,"estime":true,"sensation":"Smooth & mellow","effets":"Douceur crémeuse, relaxation légère, humeur positive","saveurs":["Crème","Floral","Vanille"],"duree":"2–3h","ideal":"Détente douce, soirée tranquille","attention":"Données estimées — vérifier au shop"},
+{"nom":"Cheese","type":"Hybride","thc":18,"cbd":1,"calmant":62,"debutant":true,"estime":false,"sensation":"Old school mellow","effets":"Relaxation classique, corps détendu, mental calme et positif","saveurs":["Fromage","Diesel","Terreux"],"duree":"2–4h","ideal":"Décompression, classique Amsterdam","attention":"Odeur très caractéristique — goût qui divise"},
+{"nom":"Cookie Cream","type":"Hybride","thc":21,"cbd":1,"calmant":63,"debutant":false,"estime":false,"sensation":"Creamy & comforting","effets":"Relaxation crémeuse, calme mental, euphorie douce","saveurs":["Cookie","Crème","Vanille"],"duree":"3–4h","ideal":"Soirée tranquille, créativité douce","attention":"Tendance sédative en fin d'effet"},
+{"nom":"Dante's Inferno","type":"Indica","thc":24,"cbd":1,"calmant":80,"debutant":false,"estime":true,"sensation":"Deep & heavy","effets":"Sédation puissante, corps très lourd, calme mental profond","saveurs":["Terreux","Boisé","Épicé"],"duree":"4–6h","ideal":"Fin de soirée, sommeil, douleurs","attention":"Réservé aux expérimentés"},
+{"nom":"Grape Gas","type":"Hybride","thc":23,"cbd":1,"calmant":70,"debutant":false,"estime":false,"sensation":"Gassy & heavy","effets":"Euphorie puis relaxation lourde, corps détendu","saveurs":["Raisin","Fuel","Terreux"],"duree":"3–5h","ideal":"Soirée, décompression","attention":"Indica-dominant malgré le classement hybride"},
+{"nom":"Ice Cream Cake","type":"Indica","thc":23,"cbd":1,"calmant":78,"debutant":false,"estime":false,"sensation":"Deeply relaxing","effets":"Sédation, corps lourd, bonheur euphorique","saveurs":["Vanille","Sucré","Crémeux"],"duree":"3–5h","ideal":"Sommeil, insomnie, fin de soirée","attention":"Très sédatif"},
+{"nom":"IICCY","type":"Hybride","thc":20,"cbd":1,"calmant":55,"debutant":false,"estime":true,"sensation":"Profil inconnu","effets":"Non documenté — probablement un hybride équilibré","saveurs":["?"],"duree":"2–4h","ideal":"À déterminer","attention":"Variété non identifiable — demander impérativement au budtender"},
+{"nom":"Jet Fuel","type":"Sativa","thc":18,"cbd":1,"calmant":30,"debutant":false,"estime":false,"sensation":"Soaring & energetic","effets":"Euphorie immédiate ressentie au front, énergie cérébrale, fou rire — puis détente corporelle sans sédation ni couch-lock","saveurs":["Diesel","Pin","Sucré"],"duree":"2–4h","ideal":"Fatigue, migraines, stress, journée active","attention":"Hybride 70 % sativa (Aspen OG × High Country Diesel) — peut amplifier l'anxiété"},
+{"nom":"Koffe & Cream","type":"Hybride","thc":20,"cbd":1,"calmant":62,"debutant":false,"estime":false,"sensation":"Smooth & comforting","effets":"Relaxation crémeuse, calme mental, légère sédation","saveurs":["Café","Crème","Vanille"],"duree":"3–4h","ideal":"Soirée tranquille, créativité douce","attention":"Tendance sédative en fin d'effet"},
+{"nom":"Kush Mint","type":"Indica","thc":23,"cbd":1,"calmant":70,"debutant":false,"estime":false,"sensation":"Cool body buzz","effets":"Détente musculaire, calme profond, euphorie subtile","saveurs":["Menthe","Pin","Terreux"],"duree":"3–5h","ideal":"Douleurs, tension, soirée relaxante","attention":"Fort — pas pour débutants"},
+{"nom":"Lemon","type":"Sativa","thc":20,"cbd":1,"calmant":20,"debutant":false,"estime":false,"sensation":"Zesty & energetic","effets":"Euphorie cérébrale, énergie, focus, humeur lumineuse","saveurs":["Citron","Agrumes","Haze"],"duree":"2–3h","ideal":"Journée active, musées, créativité","attention":"Profil Lemon Haze — stimulant, éviter si tendance anxieuse"},
+{"nom":"Mandarine Cookie","type":"Hybride","thc":20,"cbd":1,"calmant":50,"debutant":true,"estime":false,"sensation":"Citrusy & uplifting","effets":"Euphorie créative, détente progressive, humeur positive","saveurs":["Mandarine","Cookie","Agrumes"],"duree":"2–4h","ideal":"Créativité, soirée décontractée","attention":"Bon équilibre — point d'entrée correct"},
+{"nom":"OG Hardcore","type":"Indica","thc":24,"cbd":1,"calmant":80,"debutant":false,"estime":true,"sensation":"Heavy OG knockout","effets":"Sédation profonde, corps très lourd, esprit calme","saveurs":["Fuel","Pin","Terreux"],"duree":"4–6h","ideal":"Sommeil, douleurs, fin de soirée","attention":"Le nom ne ment pas — couch-lock garanti"},
+{"nom":"Permanent Marker","type":"Indica","thc":25,"cbd":1,"calmant":72,"debutant":false,"estime":false,"sensation":"Euphoric then heavy","effets":"Euphorie initiale intense puis relaxation profonde, corps lourd, mental calme","saveurs":["Fuel","Beurre","Terreux"],"duree":"3–5h","ideal":"Fin de soirée, décompression totale","attention":"Parmi les plus fortes de la liste — THC très élevé"},
+{"nom":"Pineapple","type":"Sativa","thc":19,"cbd":1,"calmant":28,"debutant":true,"estime":false,"sensation":"Tropical & happy","effets":"Euphorie tropicale, énergie douce, bonne humeur","saveurs":["Ananas","Tropical","Sucré"],"duree":"2–3h","ideal":"Journée, socialiser, balade","attention":"Profil proche de Pineapple Express — plutôt accessible"},
+{"nom":"Rainbow S11","type":"Hybride","thc":22,"cbd":1,"calmant":50,"debutant":false,"estime":true,"sensation":"Vibrant & balanced","effets":"Euphorie équilibrée, créativité, relaxation douce","saveurs":["Fruité","Sucré","Floral"],"duree":"2–4h","ideal":"Créativité, soirée, musique","attention":"Données estimées — vérifier au shop"},
+{"nom":"Red Bull","type":"Sativa","thc":16,"cbd":2,"calmant":15,"debutant":true,"estime":false,"sensation":"Clear-headed & alert","effets":"Énergie, focus, légèreté cérébrale","saveurs":["Agrumes","Fruité","Frais"],"duree":"2–3h","ideal":"Musées, vélo, journée active","attention":"Peut accélérer les pensées"},
+{"nom":"Runtz","type":"Hybride","thc":22,"cbd":1,"calmant":52,"debutant":false,"estime":false,"sensation":"Smooth & candy-like","effets":"Euphorie douce et durable, relaxation équilibrée, bien-être général","saveurs":["Bonbon","Fruité","Sucré"],"duree":"3–4h","ideal":"Soirée, détente, socialiser","attention":"Apparaît aussi sous « Runtz US » — dose progressive"},
+{"nom":"SCC","type":"Hybride","thc":21,"cbd":1,"calmant":58,"debutant":false,"estime":true,"sensation":"Profil inconnu","effets":"Acronyme non identifié (Sour Candy Cookies ? Sunset Cookies Cream ?)","saveurs":["?"],"duree":"2–4h","ideal":"À déterminer","attention":"Acronyme de shop — demander le nom complet au budtender"},
+{"nom":"Strawberry Gelonade","type":"Sativa","thc":20,"cbd":1,"calmant":28,"debutant":true,"estime":false,"sensation":"Bright & refreshing","effets":"Euphorie fruitée, énergie créative, légèreté mentale","saveurs":["Fraise","Citron","Fruité"],"duree":"2–3h","ideal":"Journée active, visites, créativité","attention":"Peut accélérer les pensées chez les anxieux"},
+{"nom":"Super Buff","type":"Hybride","thc":20,"cbd":1,"calmant":45,"debutant":false,"estime":true,"sensation":"Balanced & comfortable","effets":"Énergie modérée, euphorie légère, corps détendu sans sédation","saveurs":["Terreux","Fruité","Pin"],"duree":"2–3h","ideal":"Activités légères, détente active","attention":"Données estimées — vérifier au shop"},
+{"nom":"Tiramisu","type":"Hybride","thc":20,"cbd":1,"calmant":55,"debutant":false,"estime":false,"sensation":"Dreamy","effets":"Euphorie douce, relaxation, créativité","saveurs":["Café","Crème","Sucré"],"duree":"2–4h","ideal":"Soirée décontractée, art, musique","attention":"Peut induire une somnolence tardive"},
+{"nom":"Tropicana","type":"Sativa","thc":20,"cbd":1,"calmant":22,"debutant":true,"estime":false,"sensation":"Citrus & uplifting","effets":"Euphorie vive, énergie, humeur lumineuse","saveurs":["Agrumes","Orange","Fruité"],"duree":"2–3h","ideal":"Musées, balades, socialiser","attention":"Stimulant — éviter si tendance anxieuse"},
+{"nom":"Tropicana Cherry","type":"Sativa","thc":20,"cbd":1,"calmant":25,"debutant":true,"estime":false,"sensation":"Bright & fruity high","effets":"Énergie fruitée, euphorie vive, créativité","saveurs":["Cerise","Agrumes","Tropical"],"duree":"2–3h","ideal":"Journée active, musées, socialiser","attention":"Peut accélérer les pensées"}
+];
+
+const $=s=>document.querySelector(s), grid=$('#grid'), dlg=$('#dlg');
+const load=k=>{try{return JSON.parse(localStorage.getItem(k))||[]}catch(e){return[]}};
+let fav=new Set(load('baie.favoris')), sel=new Set(), types=new Set(), onlyDeb=false, onlyFav=false;
+const saveFav=()=>{try{localStorage.setItem('baie.favoris',JSON.stringify([...fav]))}catch(e){}};
+
+const SC={thc:30,cbd:5,calmant:100};
+const bar=(lbl,key,s)=>`<div class="b"><span>${lbl}</span><span class="trk"><i style="--p:${Math.min(100,s[key]/SC[key]*100)}"></i></span><span class="v">${s[key]}${key==='calmant'?'':' %'}</span></div>`;
+
+function match(s,q){
+  if(types.size&&!types.has(s.type))return false;
+  if(onlyDeb&&!s.debutant)return false;
+  if(onlyFav&&!fav.has(s.nom))return false;
+  if(!q)return true;
+  return (s.nom+' '+s.saveurs.join(' ')+' '+s.effets+' '+s.ideal+' '+s.sensation+' '+s.type).toLowerCase().includes(q);
+}
+
+function render(){
+  const q=$('#q').value.trim().toLowerCase(), by=$('#sort').value;
+  const cmp={az:(a,b)=>a.nom.localeCompare(b.nom,'fr'),'thc-':(a,b)=>b.thc-a.thc,'thc+':(a,b)=>a.thc-b.thc,'cal-':(a,b)=>b.calmant-a.calmant,'cal+':(a,b)=>a.calmant-b.calmant}[by];
+  const list=D.filter(s=>match(s,q)).sort(cmp);
+  grid.innerHTML=list.map(s=>`<article class="c" data-n="${s.nom}">
+    <div class="chd"><h3>${s.nom}${s.estime?' <span class="est" title="Données estimées">*</span>':''}</h3>
+    ${s.debutant?'<span class="deb">Débutant</span>':''}<span class="badge ${s.type}">${s.type}</span></div>
+    <p class="sens">${s.sensation}</p>
+    ${bar('THC','thc',s)}${bar('CBD','cbd',s)}${bar('Calmant','calmant',s)}
+    <div class="cft">
+      <button data-act="fav" aria-pressed="${fav.has(s.nom)}">${fav.has(s.nom)?'Favori':'Ajouter'}</button>
+      <button data-act="cmp" aria-pressed="${sel.has(s.nom)}">${sel.has(s.nom)?'Comparé':'Comparer'}</button>
+    </div></article>`).join('');
+  $('#empty').hidden=list.length>0;
+  $('#count').textContent=list.length+' / '+D.length+' variétés';
+  $('#cbar').hidden=sel.size===0;
+  $('#cnb').textContent=sel.size+' sélectionnée'+(sel.size>1?'s':'');
+  $('#cgo').disabled=sel.size<2;
+}
+
+function detail(s){
+  $('#dlgc').innerHTML=`<h2>${s.nom}${s.estime?' <span class="est">*</span>':''}</h2>
+    <span class="badge ${s.type}">${s.type}</span> ${s.debutant?'<span class="tag">Adapté débutant</span>':''}
+    <p class="sens">${s.sensation}</p>
+    ${bar('THC','thc',s)}${bar('CBD','cbd',s)}${bar('Calmant','calmant',s)}
+    <dl class="kv">
+      <dt>Effets</dt><dd>${s.effets}</dd>
+      <dt>Durée</dt><dd>${s.duree}</dd>
+      <dt>Idéal pour</dt><dd>${s.ideal}</dd>
+      <dt>Saveurs</dt><dd class="tags">${s.saveurs.map(f=>`<span class="tag">${f}</span>`).join('')}</dd>
+    </dl>
+    <p class="warn"><b>À noter —</b> ${s.attention}${s.estime?' <i>(profil estimé, non vérifié)</i>':''}</p>`;
+  dlg.showModal();
+}
+
+function compare(){
+  const l=D.filter(s=>sel.has(s.nom));
+  const row=(lbl,f,cls)=>`<tr><th scope="row">${lbl}</th>${l.map(s=>'<td class="'+(cls||'')+'">'+f(s)+'</td>').join('')}</tr>`;
+  $('#dlgc').innerHTML=`<h2>Comparaison</h2><div class="scroll"><table>
+    <tr><th scope="row"></th>${l.map(s=>`<td><b>${s.nom}</b>${s.estime?' <span class="est">*</span>':''}</td>`).join('')}</tr>
+    ${row('Type',s=>`<span class="badge ${s.type}">${s.type}</span>`)}
+    ${row('THC',s=>s.thc+' %','num')}${row('CBD',s=>s.cbd+' %','num')}${row('Calmant',s=>s.calmant+' / 100','num')}
+    ${row('Débutant',s=>s.debutant?'oui':'non')}
+    ${row('Effets',s=>s.effets)}${row('Durée',s=>s.duree,'num')}${row('Idéal',s=>s.ideal)}
+    ${row('Saveurs',s=>s.saveurs.join(', '))}${row('À noter',s=>s.attention)}
+  </table></div>`;
+  dlg.showModal();
+}
+
+grid.onclick=e=>{
+  const card=e.target.closest('.c'); if(!card)return;
+  const s=D.find(x=>x.nom===card.dataset.n), act=e.target.dataset.act;
+  if(act==='fav'){ fav.has(s.nom)?fav.delete(s.nom):fav.add(s.nom); saveFav(); render(); }
+  else if(act==='cmp'){
+    if(sel.has(s.nom))sel.delete(s.nom);
+    else if(sel.size>=3){alert('3 variétés maximum en comparaison.');return;}
+    else sel.add(s.nom);
+    render();
+  }
+  else detail(s);
+};
+$('#chips').onclick=e=>{
+  const b=e.target.closest('.chip'); if(!b)return;
+  const f=b.dataset.f;
+  if(f==='debutant')onlyDeb=!onlyDeb; else if(f==='fav')onlyFav=!onlyFav;
+  else types.has(f)?types.delete(f):types.add(f);
+  b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');
+  render();
+};
+$('#q').oninput=render;
+$('#sort').onchange=render;
+$('#dclose').onclick=()=>dlg.close();
+$('#cgo').onclick=compare;
+$('#cclr').onclick=()=>{sel.clear();render();};
+render();
+
+// self-check : échelles, filtres, recherche
+(function(){
+  console.assert(D.length===37,'dataset');
+  console.assert(bar('THC','thc',{thc:30}).includes('--p:100'),'échelle THC /30');
+  console.assert(bar('CBD','cbd',{cbd:1}).includes('--p:20'),'échelle CBD /5');
+  types.add('Indica'); console.assert(!match(D[0],''),'filtre type'); types.clear();
+  console.assert(match(D[0],'citron')&&!match(D[0],'zzz'),'recherche');
+})();
+</script>
+</body>
+</html>
