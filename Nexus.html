@@ -348,6 +348,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
         <button class="io-btn imp" onclick="document.getElementById('import-file').click()">⬆ Importer JSON</button>
       </div>
       <input type="file" id="import-file" accept=".json" onchange="importJSON(event)"/>
+      <button class="io-btn" style="width:100%;margin-bottom:4px;color:var(--muted)" onclick="exportJSON(true)">🕶 Exporter anonyme</button>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Pour envoyer tes données en cas de souci : noms remplacés, notes retirées, dates décalées, montants et quantités brouillés.</div>
       <button class="io-btn" style="width:100%;margin-bottom:12px;color:var(--muted)" onclick="changePin()">🔒 Changer le code d'accès</button>
       <div class="vform" style="padding:14px;margin-bottom:12px">
         <div class="field" style="margin-bottom:0">
@@ -951,7 +953,7 @@ function saveTreso(){
 function renderMetrics(){
   const stocks=computeStock();
   const cst=cmpState();
-  let valStock=0,investi=0,revenu=0,cogs=0,pertes=0,ventesDeja=0;
+  let valStock=0,investi=0,revenu=0,cogs=0,perdu=0,retrouve=0,ventesDeja=0;
   state.produits.forEach(p=>{ const s=cst[p.id]; valStock += s?s.val:0; });
   state.transactions.forEach(tx=>{
     if(tx.type==='reception') investi+=parseFloat(tx.qty)*parseFloat(tx.price||0);
@@ -960,8 +962,12 @@ function renderMetrics(){
       // ventes d'avant la bascule : leur argent est déjà dans la trésorerie
       if(tx.remonte===true) ventesDeja+=parseFloat(tx.price||0);
     }
-    if(tx.type==='ajustement'&&!tx.sav&&parseFloat(tx.qty)<0) pertes+=Math.abs(parseFloat(tx.qty))*txCost(tx);
+    /* Un recomptage joue dans les deux sens : ce qu'on retrouve annule ce
+       qu'un recomptage précédent avait compté perdu. Ne compter que les
+       manques faisait passer pour une perte un stock qui s'équilibrait. */
+    if(tx.type==='ajustement'&&!tx.sav){ const v=parseFloat(tx.qty)*txCost(tx); if(v<0) perdu-=v; else retrouve+=v; }
   });
+  const pertes=perdu-retrouve; // pertes nettes, négatives si on a retrouvé plus que perdu
   /* La marge ne dépend pas de l'endroit où dort l'argent : une vente est
      rentable dès qu'elle est faite, même si le vendeur détient encore les
      billets. Les mouvements de caisse n'y entrent pas non plus. */
@@ -990,7 +996,8 @@ function renderMetrics(){
     <div class="mcard"><div class="mlabel">Revenu des ventes</div><div class="mval cg">+${fmtM(revenu)} €</div></div>
     <div class="mcard"><div class="mlabel">Marge nette</div><div class="mval ${marge>=0?'cg':'cr'}">${marge>=0?'+':''}${fmtM(marge)} €</div></div>
     <div class="mcard"><div class="mlabel">Total investi (achats)</div><div class="mval cr">−${fmtM(investi)} €</div></div>
-    <div class="mcard"><div class="mlabel">Pertes (casse, écarts)</div><div class="mval ${pertes>0?'ca':'cg'}">−${fmtM(pertes)} €</div></div>
+    <div class="mcard"><div class="mlabel">Pertes nettes (casse, écarts)</div><div class="mval ${pertes>0.005?'ca':'cg'}">${pertes>0.005?'−':pertes<-0.005?'+':''}${fmtM(Math.abs(pertes))} €</div>
+      ${retrouve>0.005?`<div style="font-size:11px;color:var(--muted);margin-top:4px">−${fmtM(perdu)} € perdus · +${fmtM(retrouve)} € retrouvés</div>`:''}</div>
     ${cx.commissions?`
     <div class="mcard wide"><div class="mlabel">Commissions vendeurs</div><div class="mval ca">−${fmtM(cx.commissions)} €</div></div>
     <div class="mcard wide"><div class="mlabel">Résultat après commissions</div><div class="mval ${resultat>=0?'cg':'cr'}">${resultat>=0?'+':''}${fmtM(resultat)} €</div>
@@ -1218,6 +1225,15 @@ function adjPreview(){
   if(isNaN(d)||d===0){ el.innerHTML='<span style="color:var(--muted)">Aucun écart</span>'; return; }
   el.innerHTML=`Écart : <b style="color:${d>0?'var(--green)':'var(--red)'};font-family:'DM Mono',monospace">${d>0?'+':''}${fmtQ(d,adjCtx.unit)}</b>`;
 }
+/* Un gros ajustement positif ressemble à une livraison. Saisie comme ça,
+   l'achat n'existe nulle part (ni trésorerie, ni coût) et le gain gonfle la
+   marge. On prévient sans bloquer : un vrai recomptage reste possible.
+   Seuil : ajouter au moins la moitié du stock enregistré à cet endroit. */
+function confirmGain(prodId,cur,delta){
+  if(delta<=0 || delta<cur*0.5) return true;
+  const p=prodById(prodId);
+  return confirm(`Tu ajoutes ${fmtQ(delta,p.unit)} de ${p.abr} alors que le stock enregistré ici est de ${fmtQ(cur,p.unit)}.\n\nSi c'est une livraison, annule et fais plutôt une réception avec son prix d'achat : sinon l'achat n'apparaît nulle part et ta marge sera trop haute.\n\nC'est bien un recomptage ?`);
+}
 function closeAdjSheet(e){ if(!e||e.target===document.getElementById('adj-bg')){ document.getElementById('adj-bg').classList.remove('open'); adjCtx=null; } }
 function saveAdj(){
   if(!adjCtx) return;
@@ -1226,12 +1242,14 @@ function saveAdj(){
   if(isNaN(v)||v<0){ alert('Renseigne une quantité valide.'); return; }
   const delta=v-adjCtx.cur;
   if(delta===0){ alert('Aucun écart à enregistrer.'); return; }
+  const sav=document.getElementById('adj-sav').checked;
+  if(!sav && !confirmGain(adjCtx.prodId,adjCtx.cur,delta)) return;
   state.transactions.push({
     id:Date.now().toString(), type:'ajustement',
     prodId:adjCtx.prodId, lieuId:adjCtx.lieuId, qty:delta,
     cost:+currentCost(adjCtx.prodId).toFixed(4),
     note:document.getElementById('adj-note').value.trim(),
-    ...(document.getElementById('adj-sav').checked?{sav:true}:{}),
+    ...(sav?{sav:true}:{}),
     day, time:nowTime()
   });
   save(); closeAdjSheet(); render();
@@ -1368,6 +1386,7 @@ function saveTx(){
     const delta=+(reel-cur).toFixed(4);
     if(delta===0){ alert('Aucun écart à enregistrer.'); return; }
     if(!note){ alert('Indique un motif dans la note (ex : non livré, casse, recomptage).'); return; }
+    if(!confirmGain(prodId,cur,delta)) return;
     state.transactions.push({
       id:Date.now().toString(), type:'ajustement',
       prodId, lieuId:lid, qty:delta, cost:+currentCost(prodId).toFixed(4),
@@ -2316,12 +2335,13 @@ function exportReport(){
   const listeCaisses = caissesActives();
   if(!txs.length && !mvtsR.length && !remsR.length){ alert('Aucune transaction sur cette période.'); return; }
 
-  let rev=0,cogs=0,inv=0,pertes=0;
+  let rev=0,cogs=0,inv=0,perdu=0,retrouve=0;
   txs.forEach(t=>{
     if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*txCost(t); }
     if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
-    if(t.type==='ajustement'&&!t.sav&&parseFloat(t.qty)<0) pertes+=Math.abs(parseFloat(t.qty))*txCost(t);
+    if(t.type==='ajustement'&&!t.sav){ const v=parseFloat(t.qty)*txCost(t); if(v<0) perdu-=v; else retrouve+=v; }
   });
+  const pertes=perdu-retrouve; // même règle que le tableau de bord
   const marge=rev-cogs-pertes;
 
   // Détail par produit (ventes)
@@ -2447,7 +2467,7 @@ details[open] summary.det::after{content:' ▴'}
   <div class="card"><div class="l">Ventes</div><div class="v g">+${esc(fmtM(rev))} €</div></div>
   <div class="card"><div class="l">Marge nette</div><div class="v ${marge>=0?'g':'r'}">${marge>=0?'+':''}${esc(fmtM(marge))} €</div></div>
   <div class="card"><div class="l">Investi (achats)</div><div class="v r">−${esc(fmtM(inv))} €</div></div>
-  <div class="card"><div class="l">Pertes</div><div class="v ${pertes>0?'o':'g'}">−${esc(fmtM(pertes))} €</div></div>
+  <div class="card"><div class="l">Pertes nettes</div><div class="v ${pertes>0.005?'o':'g'}">${pertes>0.005?'−':pertes<-0.005?'+':''}${esc(fmtM(Math.abs(pertes)))} €</div></div>
   <div class="card"><div class="l">Valeur du stock</div><div class="v y">${esc(fmtM(valStock))} €</div></div>
 </div>
 <div class="cards" style="margin-top:10px">
@@ -2508,7 +2528,7 @@ ${prodRows?`<h2>Ventes par produit</h2>
 <table style="margin-top:10px"><thead><tr><th>Date</th><th>Type</th><th>Produit</th><th>Lieu</th><th style="text-align:right">Qté</th><th style="text-align:right">Montant</th></tr></thead>
 <tbody>${txRows}</tbody></table></details>
 
-<div class="foot">Marge nette = revenu des ventes − coût réel des marchandises vendues − pertes. Le coût de chaque vente est figé au moment de son enregistrement (coût moyen pondéré des lots reçus) : les chiffres passés ne changent pas si un prix d'achat évolue. Bénéfice centralisé, tous lieux confondus.</div>
+<div class="foot">Marge nette = revenu des ventes − coût réel des marchandises vendues − pertes nettes (ce qui manque aux recomptages, moins ce qu'on y retrouve). Le coût de chaque vente est figé au moment de son enregistrement (coût moyen pondéré des lots reçus) : les chiffres passés ne changent pas si un prix d'achat évolue. Bénéfice centralisé, tous lieux confondus.</div>
 </body></html>`;
 
   const blob=new Blob([html],{type:'text/html'});
@@ -2526,13 +2546,63 @@ ${prodRows?`<h2>Ventes par produit</h2>
 }
 
 /* ── Export / Import JSON ── */
-function exportJSON(){
-  const data=JSON.stringify({version:DATA_VERSION,exportDate:new Date().toISOString(),...state},null,2);
+/* Copie anonyme pour le debug (même cœur que tools/anonymiser.html, sans la concordance) :
+   noms en charabia, notes retirées, dates décalées, argent × k, quantités × q.
+   Les rapports (taux de marge, stock négatif…) survivent, c'est tout l'intérêt. */
+function anonymize(s,randInt){
+  const rand=(a,b)=>a+(randInt(1e9)/1e9)*(b-a);
+  const k=rand(0.3,3), q=rand(0.3,3), shift=30+randInt(370);
+  /* qty × prix unitaire doit toujours retomber sur un montant × k */
+  const money=v=>v==null?v:parseFloat(v)*k;
+  const unit=v=>v==null?v:parseFloat(v)*k/q;
+  const qty=v=>v==null?v:parseFloat(v)*q;
+  const day=d=>{
+    const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d||''); if(!m) return d;
+    const t=new Date(+m[3],+m[2]-1,+m[1]+shift);
+    return String(t.getDate()).padStart(2,'0')+'/'+String(t.getMonth()+1).padStart(2,'0')+'/'+t.getFullYear();
+  };
+  const C='bdfgklmnprstvz', V='aeiou', used=new Set();
+  const fake=()=>{ let w; do{ w=''; for(let i=0;i<2+randInt(2);i++) w+=C[randInt(C.length)]+V[randInt(V.length)]; }while(used.has(w)); used.add(w); return w; };
+  /* identifiants : ceux des transactions sont des Date.now() qui trahissent la vraie date */
+  const ids=new Map(); let n=0;
+  const id=(pfx,v)=>{ if(v==null||v==='centrale') return v; const key=pfx+':'+v; if(!ids.has(key)) ids.set(key,pfx+(++n)); return ids.get(key); };
+  const strip=o=>{ const r={...o}; delete r.note; delete r.motif; return r; };
+  const out={
+    version:s.version,
+    produits:(s.produits||[]).map(p=>{ const w=fake(); return {...p,id:id('p',p.id),abr:w.toUpperCase(),nom:w[0].toUpperCase()+w.slice(1),pa:unit(p.pa)}; }),
+    lieux:(s.lieux||[]).map(l=>({...l,id:id('l',l.id),nom:l.id==='centrale'?'Centrale':fake()})),
+    vendeurs:(s.vendeurs||[]).map(v=>({...v,id:id('v',v.id),nom:fake()})),
+    transactions:(s.transactions||[]).map(t=>{
+      const r=strip(t);
+      r.id=id('t',t.id);
+      if(t.groupId) r.groupId=id('g',t.groupId);
+      r.prodId=id('p',t.prodId);
+      for(const f of ['lieuId','fromId','toId']) if(t[f]) r[f]=id('l',t[f]);
+      if(t.vendeurId) r.vendeurId=id('v',t.vendeurId);
+      r.qty=qty(t.qty);
+      if(t.price!=null) r.price=t.type==='reception'?unit(t.price):money(t.price); // réception : €/u ; vente : total
+      if(t.cost!=null) r.cost=unit(t.cost);
+      r.day=day(t.day);
+      return r;
+    }),
+    mouvements:(s.mouvements||[]).map(m=>({...strip(m),id:id('m',m.id),montant:money(m.montant),day:day(m.day),
+      ...(m.holderId?{holderId:id(m.holderKind==='lieu'?'l':'v',m.holderId)}:{})})),
+    tresorerieInitiale:money(s.tresorerieInitiale||0)
+  };
+  /* absent = état d'avant la trésorerie répartie : ne pas l'inventer, la migration en dépend */
+  if(s.remontees!==undefined) out.remontees=s.remontees.map(r=>({...strip(r),id:id('r',r.id),
+    holderId:id(r.kind==='lieu'?'l':'v',r.holderId),attendu:money(r.attendu),commission:money(r.commission),recu:money(r.recu),day:day(r.day)}));
+  return out;
+}
+function exportJSON(anon){
+  let s={version:DATA_VERSION,exportDate:new Date().toISOString(),...state};
+  if(anon===true) s=anonymize(s,max=>crypto.getRandomValues(new Uint32Array(1))[0]%max);
+  const data=JSON.stringify(s,null,2);
   const blob=new Blob([data],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const d=new Date().toISOString().slice(0,10);
-  a.href=url; a.download=`stock-depots-${d}.json`;
+  a.href=url; a.download=`stock-depots-${d}${anon===true?'-anonyme':''}.json`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
