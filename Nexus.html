@@ -953,7 +953,7 @@ function saveTreso(){
 function renderMetrics(){
   const stocks=computeStock();
   const cst=cmpState();
-  let valStock=0,investi=0,revenu=0,cogs=0,perdu=0,retrouve=0,ventesDeja=0;
+  let valStock=0,investi=0,revenu=0,cogs=0,ventesDeja=0;
   state.produits.forEach(p=>{ const s=cst[p.id]; valStock += s?s.val:0; });
   state.transactions.forEach(tx=>{
     if(tx.type==='reception') investi+=parseFloat(tx.qty)*parseFloat(tx.price||0);
@@ -962,12 +962,8 @@ function renderMetrics(){
       // ventes d'avant la bascule : leur argent est déjà dans la trésorerie
       if(tx.remonte===true) ventesDeja+=parseFloat(tx.price||0);
     }
-    /* Un recomptage joue dans les deux sens : ce qu'on retrouve annule ce
-       qu'un recomptage précédent avait compté perdu. Ne compter que les
-       manques faisait passer pour une perte un stock qui s'équilibrait. */
-    if(tx.type==='ajustement'&&!tx.sav){ const v=parseFloat(tx.qty)*txCost(tx); if(v<0) perdu-=v; else retrouve+=v; }
   });
-  const pertes=perdu-retrouve; // pertes nettes, négatives si on a retrouvé plus que perdu
+  const {perdu,retrouve,net:pertes}=pertesNettes(state.transactions); // négatives si on a retrouvé plus que perdu
   /* La marge ne dépend pas de l'endroit où dort l'argent : une vente est
      rentable dès qu'elle est faite, même si le vendeur détient encore les
      billets. Les mouvements de caisse n'y entrent pas non plus. */
@@ -1225,6 +1221,19 @@ function adjPreview(){
   if(isNaN(d)||d===0){ el.innerHTML='<span style="color:var(--muted)">Aucun écart</span>'; return; }
   el.innerHTML=`Écart : <b style="color:${d>0?'var(--green)':'var(--red)'};font-family:'DM Mono',monospace">${d>0?'+':''}${fmtQ(d,adjCtx.unit)}</b>`;
 }
+/* Pertes nettes d'une liste de transactions. Un recomptage joue dans les deux
+   sens : ce qu'on retrouve annule ce qu'un recomptage précédent avait compté
+   perdu. Seule source de la règle — tableau de bord, journal et rapport
+   l'appellent tous : recopiée à trois endroits, elle avait divergé (v10.3). */
+function pertesNettes(list){
+  let perdu=0, retrouve=0;
+  list.forEach(t=>{
+    if(t.type!=='ajustement'||t.sav) return;
+    const v=parseFloat(t.qty)*txCost(t);
+    if(v<0) perdu-=v; else retrouve+=v;
+  });
+  return { perdu, retrouve, net: perdu-retrouve };
+}
 /* Un gros ajustement positif ressemble à une livraison. Saisie comme ça,
    l'achat n'existe nulle part (ni trésorerie, ni coût) et le gain gonfle la
    marge. On prévient sans bloquer : un vrai recomptage reste possible.
@@ -1471,12 +1480,12 @@ function renderJournal(){
     return true;
   });
 
-  let rev=0,cogs=0,inv=0,per=0;
+  let rev=0,cogs=0,inv=0;
   txs.forEach(t=>{
     if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*txCost(t); }
     if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
-    if(t.type==='ajustement'&&!t.sav&&parseFloat(t.qty)<0) per+=Math.abs(parseFloat(t.qty))*txCost(t);
   });
+  const per=pertesNettes(txs).net;
   const marge=rev-cogs-per;
   const mv=mouvementsTotaux(mvts);
   document.getElementById('journal-summary').innerHTML=`
@@ -1484,7 +1493,7 @@ function renderJournal(){
       <div><div class="mlabel">Ventes</div><div class="mval cg" style="font-size:15px">+${fmtM(rev)} €</div></div>
       <div><div class="mlabel">Marge nette</div><div class="mval ${marge>=0?'cg':'cr'}" style="font-size:15px">${marge>=0?'+':''}${fmtM(marge)} €</div></div>
       <div><div class="mlabel">Investi</div><div class="mval cr" style="font-size:15px">−${fmtM(inv)} €</div></div>
-      <div><div class="mlabel">Pertes</div><div class="mval ${per>0?'ca':'cg'}" style="font-size:15px">−${fmtM(per)} €</div></div>
+      <div><div class="mlabel">Pertes nettes</div><div class="mval ${per>0.005?'ca':'cg'}" style="font-size:15px">${per>0.005?'−':per<-0.005?'+':''}${fmtM(Math.abs(per))} €</div></div>
       ${mv.sorties||mv.entrees?`<div style="grid-column:span 2"><div class="mlabel">Sorties de caisse (hors marge)</div><div class="mval ca" style="font-size:15px">−${fmtM(mv.sorties)} €${mv.entrees?` <span style="color:var(--green)">+${fmtM(mv.entrees)} €</span>`:''}</div></div>`:''}
     </div>`;
 
@@ -2335,13 +2344,12 @@ function exportReport(){
   const listeCaisses = caissesActives();
   if(!txs.length && !mvtsR.length && !remsR.length){ alert('Aucune transaction sur cette période.'); return; }
 
-  let rev=0,cogs=0,inv=0,perdu=0,retrouve=0;
+  let rev=0,cogs=0,inv=0;
   txs.forEach(t=>{
     if(t.type==='vente'){ rev+=parseFloat(t.price||0); cogs+=parseFloat(t.qty)*txCost(t); }
     if(t.type==='reception') inv+=parseFloat(t.qty)*parseFloat(t.price||0);
-    if(t.type==='ajustement'&&!t.sav){ const v=parseFloat(t.qty)*txCost(t); if(v<0) perdu-=v; else retrouve+=v; }
   });
-  const pertes=perdu-retrouve; // même règle que le tableau de bord
+  const pertes=pertesNettes(txs).net;
   const marge=rev-cogs-pertes;
 
   // Détail par produit (ventes)
