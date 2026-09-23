@@ -673,6 +673,7 @@ function load() {
   } catch(e){}
   ensureCentrale();
   backfillCosts();
+  recost(...state.produits.map(p=>p.id)); // répare les coûts figés sur une réception corrigée depuis
   save();
   render();
 }
@@ -739,6 +740,27 @@ function currentCost(prodId){
 /* Coût retenu pour une transaction donnée */
 function txCost(tx){
   return tx.cost!=null ? parseFloat(tx.cost) : prodPA(tx.prodId);
+}
+/* Refait le coût figé des ventes et ajustements quand leur source change :
+   réception corrigée, supprimée ou saisie après coup. Sans ça, une faute de
+   prix corrigée restait gravée dans toutes les ventes faites entre-temps et
+   plombait la marge pour toujours. Le passé ne bouge que si on corrige le
+   passé ; le pa n'entre toujours dans aucun calcul (sans lot reçu avant la
+   vente, on garde le coût déjà figé). */
+function recost(...ids){
+  const st={};
+  for(const tx of sortedTx()){
+    if(!ids.includes(tx.prodId)) continue;
+    const s=st[tx.prodId]||(st[tx.prodId]={qty:0,val:0});
+    if(tx.type==='reception'){
+      s.qty+=parseFloat(tx.qty); s.val+=parseFloat(tx.qty)*parseFloat(tx.price||0);
+    } else if(tx.type==='vente'||tx.type==='ajustement'){
+      if(s.qty>0) tx.cost=+(s.val/s.qty).toFixed(4);
+      const d = tx.type==='vente' ? -parseFloat(tx.qty) : parseFloat(tx.qty);
+      s.qty+=d; s.val+=d*txCost(tx);
+    }
+    if(s.qty<=0.0000001){ s.qty=0; s.val=0; }
+  }
 }
 /* Fige rétroactivement le coût des anciennes transactions qui n'en ont pas */
 function backfillCosts(){
@@ -1310,6 +1332,7 @@ function saveTx(){
     const price=parseFloat(document.getElementById('f-price').value||0);
     const rlieu=document.getElementById('f-rlieu').value||CENTRALE_ID;
     state.transactions.push({...base,type:'reception',lieuId:rlieu,price});
+    recost(prodId); // une réception saisie après coup change le coût des ventes qui la suivent
   }
   else if(mode==='vente'){
     const lieuId=document.getElementById('f-vlieu').value;
@@ -1799,7 +1822,8 @@ function openEditTx(id){
 }
 function editUnitLabel(){
   const p=prodById(document.getElementById('e-prod').value);
-  document.getElementById('e-qty-label').textContent=p?`Quantité (${p.unit})`:'Quantité';
+  const lbl=editMode==='ajustement'?'Écart':'Quantité';
+  document.getElementById('e-qty-label').textContent=p?`${lbl} (${p.unit})`:lbl;
 }
 function setEditMode(m){
   editMode=m;
@@ -1809,7 +1833,7 @@ function setEditMode(m){
   document.getElementById('e-wrap-vlieu').style.display=(m==='vente')?'block':'none';
   document.getElementById('e-wrap-vendeur').style.display=(m==='vente')?'block':'none';
   document.getElementById('e-wrap-transfer').style.display=(m==='transfert')?'grid':'none';
-  document.getElementById('e-wrap-price').style.display=(m==='transfert')?'none':'block';
+  document.getElementById('e-wrap-price').style.display=(m==='transfert'||m==='ajustement')?'none':'block';
   const plabels={vente:'Prix de vente (€)',reception:"Prix d'achat (€/u)"};
   document.getElementById('e-price-label').textContent=plabels[m]||'Prix (€)';
 }
@@ -1825,13 +1849,17 @@ function saveEditTx(){
   const qty=parseFloat(document.getElementById('e-qty').value);
   const note=document.getElementById('e-note').value.trim();
   const p=prodById(prodId);
-  if(!prodId||isNaN(qty)||qty<=0){ alert('Quantité invalide.'); return; }
+  /* un ajustement est un écart signé : négatif pour une perte */
+  if(!prodId||isNaN(qty)||(editMode==='ajustement'?qty===0:qty<=0)){ alert('Quantité invalide.'); return; }
   const day=readDay('e-day'); if(!day) return;
   const updated={...tx,prodId,qty,note,day,type:editMode};
   delete updated.lieuId; delete updated.fromId; delete updated.toId; delete updated.price; delete updated.vendeurId;
 
-  if(editMode==='reception'){
-    updated.lieuId=CENTRALE_ID;
+  if(editMode==='ajustement'){
+    updated.lieuId=tx.lieuId;
+  } else if(editMode==='reception'){
+    /* une réception livrée directement dans un dépôt y reste */
+    updated.lieuId=(tx.type==='reception'&&tx.lieuId)||CENTRALE_ID;
     updated.price=parseFloat(document.getElementById('e-price').value||0);
   } else if(editMode==='vente'){
     updated.lieuId=document.getElementById('e-vlieu').value;
@@ -1850,17 +1878,22 @@ function saveEditTx(){
   }
   const idx=state.transactions.findIndex(t=>t.id===editTxId);
   state.transactions[idx]=updated;
+  recost(tx.prodId, prodId);
   editTxId=null; save(); closeEditTx(); render();
 }
 function deleteTxById(id){
   if(!confirm('Supprimer cette transaction ?')) return;
+  const tx=state.transactions.find(t=>t.id===id);
   state.transactions=state.transactions.filter(t=>t.id!==id);
+  if(tx) recost(tx.prodId);
   save(); render();
 }
 function deleteTx(){
   if(!editTxId) return;
   if(!confirm('Supprimer cette transaction ?')) return;
+  const tx=state.transactions.find(t=>t.id===editTxId);
   state.transactions=state.transactions.filter(t=>t.id!==editTxId);
+  if(tx) recost(tx.prodId);
   editTxId=null; save(); closeEditTx(); render();
 }
 
@@ -2521,6 +2554,8 @@ function importJSON(ev){
       state.remontees=mig.remontees;
       state.tresorerieInitiale=mig.tresorerieInitiale;
       ensureCentrale();
+      backfillCosts();
+      recost(...state.produits.map(p=>p.id));
       save(); render();
       alert('Import réussi : '+activeProduits().length+' produits, '+activeLieux().length+' lieux, '+state.transactions.length+' transactions.');
     }catch(err){ alert('Fichier invalide : '+err.message); }
